@@ -363,7 +363,7 @@ function processData(type, data) {
             ${data.commits[i].added.length} addition(s)
             ${data.commits[i].removed.length} deletion(s)
             `;
-            output.DESCRIPTION += `[${truncate(data.commits[i].id,StrLen.commit_id,true)}](${data.commits[i].url} '${changelog}') ${truncate(data.commits[i].message,StrLen.commit_msg)} - ${data.commits[i].author.name}\n`;
+            output.DESCRIPTION += `[${truncate(data.commits[i].id,StrLen.commit_id,true)}](_blank '${changelog}') ${truncate(data.commits[i].message,StrLen.commit_msg)} - ${data.commits[i].author.name}\n`;
           }
         }
         break;
@@ -389,7 +389,7 @@ function processData(type, data) {
             ${data.commits[i].added.length} addition(s)
             ${data.commits[i].removed.length} deletion(s)
             `;
-            output.DESCRIPTION += `[${truncate(data.commits[i].id,StrLen.commit_id,true)}](${data.commits[i].url} '${changelog}') ${truncate(data.commits[i].message,StrLen.commit_msg)} - ${data.commits[i].author.name}\n`;
+            output.DESCRIPTION += `[${truncate(data.commits[i].id,StrLen.commit_id,true)}](_blank '${changelog}') ${truncate(data.commits[i].message,StrLen.commit_msg)} - ${data.commits[i].author.name}\n`;
           }
         }
         // Tag Stuff
@@ -408,7 +408,7 @@ function processData(type, data) {
 
 	  case 'Issue Hook':
 	  case 'Confidential Issue Hook':
-		//output.PERMALINK = truncate(data.object_attributes.url);
+		output.PERMALINK = truncate(data.object_attributes.url);
 		let action = 'Issue';
 
 		switch (data.object_attributes.action) {
@@ -473,7 +473,7 @@ function processData(type, data) {
             output.COLOR = ColorCodes.commit;
             output.DESCRIPTION = `**New Comment on Commit ${truncate(data.commit.id,StrLen.commit_id,true)}**\n`;
 
-            let commit_info = `[${truncate(data.commit.id,StrLen.commit_id,true)}](${data.commit.url}) `;
+            let commit_info = `[${truncate(data.commit.id,StrLen.commit_id,true)}](_blank) `;
             commit_info += `${truncate(data.commit.message,StrLen.commit_msg, false, true)} - ${data.commit.author.name}`;
             output.FIELDS.push({
               name: 'Commit',
@@ -498,7 +498,7 @@ function processData(type, data) {
               *Merge Status: ${data.merge_request.merge_status}* ${mr_state}
               ${data.merge_request.title}`;
 
-            let last_commit_info = `[${truncate(data.merge_request.last_commit.id,StrLen.commit_id,true)}](${data.merge_request.last_commit.url}) `;
+            let last_commit_info = `[${truncate(data.merge_request.last_commit.id,StrLen.commit_id,true)}](_blank) `;
             last_commit_info += `${truncate(data.merge_request.last_commit.message,StrLen.commit_msg, false, true)} - ${data.merge_request.last_commit.author.name}`;
             output.FIELDS.push({
               name: 'Latest Commit',
@@ -698,7 +698,7 @@ function processData(type, data) {
           value: msToTime(truncate(data.object_attributes.duration * 1000))
         });
 
-        let commit_info = `[${truncate(data.commit.id,StrLen.commit_id,true)}](${data.commit.url}) `;
+        let commit_info = `[${truncate(data.commit.id,StrLen.commit_id,true)}](_blank) `;
         commit_info += `${truncate(data.commit.message,StrLen.commit_msg, false, true)} - ${data.commit.author.name}`;
         output.FIELDS.push({
           name: 'Commit',
@@ -724,7 +724,7 @@ function processData(type, data) {
             if (data.builds[i].status != 'skipped') {
               build_details = DEDENT `
               - **Build ID**: ${build_link}
-              - **User**: [${data.builds[i].user.username}](${CONFIG.webhook.gitlab_url}/${data.builds[i].user.username})
+              - **User**: [${data.builds[i].user.username}](_blank)
               - **Created**: ${dates.create.toLocaleString('UTC',dateOptions)}
               - **Started**: ${dates.start.toLocaleString('UTC',dateOptions)}
               - **Finished**: ${dates.finish.toLocaleString('UTC',dateOptions)}`;
@@ -755,7 +755,7 @@ function processData(type, data) {
           value: msToTime(truncate(data.build_duration * 1000))
         });
 
-        let build_commit_info = `[${truncate(data.commit.sha,StrLen.commit_id,true)}](${canon_url}/commit/${data.commit.sha}) `;
+        let build_commit_info = `[${truncate(data.commit.sha,StrLen.commit_id,true)}](_blank) `;
         build_commit_info += `${truncate(data.commit.message,StrLen.commit_msg, false, true)} - ${data.commit.author_name}`;
         output.FIELDS.push({
           name: 'Commit',
@@ -787,12 +787,12 @@ function processData(type, data) {
             break;
         }
 
-        let build_link = `[${data.build_id}](${output.PERMALINK})`;
+        let build_link = `[${data.build_id}](_blank)`;
         let build_details = `*Skipped Build ID ${build_link}*`;
         if (data.build_status != 'skipped') {
           build_details = DEDENT `
           - **Build ID**: ${build_link}
-          - **Commit Author**: [${data.commit.author_name}](${data.commit.author_url})
+          - **Commit Author**: [${data.commit.author_name}](_blank)
           - **Started**: ${build_dates.start.toLocaleString('UTC',dateOptions)}
           - **Finished**: ${build_dates.finish.toLocaleString('UTC',dateOptions)}`;
         }
@@ -859,7 +859,7 @@ function sendData(input) {
     },
     title: input.TITLE,
     //url: input.PERMALINK,
-    url: 'https://www.youtube.com/watch?v=9sjWU5dGcGI',
+    url: '_blank',
     description: input.DESCRIPTION,
     fields: input.FIELDS || {},
     timestamp: input.TIME || new Date(),
