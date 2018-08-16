@@ -396,12 +396,12 @@ function processData(type, data) {
         output.FIELDS.push({
           inline: true,
           name: 'Previous',
-          value: `[${truncate(data.before, StrLen.commit_id, true)}](${data.project.web_url}/commit/${data.before} 'Check the previous tagged commit')`
+          value: `${truncate(data.before, StrLen.commit_id, true)}`
         });
         output.FIELDS.push({
           inline: true,
           name: 'Current',
-          value: `[${truncate(data.after, StrLen.commit_id, true)}](${data.project.web_url}/commit/${data.after} 'Check the current tagged commit')`
+          value: `${truncate(data.after, StrLen.commit_id, true)}`
         });
 
         break;
@@ -606,7 +606,7 @@ function processData(type, data) {
           value: DEDENT `
             ${data.object_attributes.source.namespace}/
             ${data.object_attributes.source.name}:
-            [${data.object_attributes.source_branch}](${data.object_attributes.source.web_url})`
+            ${data.object_attributes.source_branch}`
         });
 
         output.FIELDS.push({
@@ -615,7 +615,7 @@ function processData(type, data) {
           value: DEDENT `
             ${data.object_attributes.target.namespace}/
             ${data.object_attributes.target.namespace}:
-            [${data.object_attributes.target_branch}](${data.object_attributes.target.web_url})`
+            ${data.object_attributes.target_branch}`
         });
 
         /*if (data.object_attributes.source) {
@@ -719,7 +719,7 @@ function processData(type, data) {
             if (data.builds[i].status == 'skipped') emote = '↪️';
             if (data.builds[i].status == 'success' || data.builds[i].status == 'created') emote = '✅';
 
-            let build_link = `[${data.builds[i].id}](${data.project.web_url + '/-/jobs/' + data.builds[i].id})`;
+            let build_link = `${data.builds[i].id}`;
 
             let build_details = `*Skipped Build ID ${build_link}*`;
 
@@ -862,7 +862,7 @@ function sendData(input) {
     },
     title: input.TITLE,
     //url: input.PERMALINK,
-    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    url: 'https://www.youtube.com/watch?v=9sjWU5dGcGI',
     description: input.DESCRIPTION,
     fields: input.FIELDS || {},
     timestamp: input.TIME || new Date(),
