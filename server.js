@@ -335,8 +335,8 @@ function processData(type, data) {
     output.AVATAR_URL = getAvatarURL(data.user_avatar);
   }
   if (data.project) {
-    output.PERMALINK = truncate(data.project.web_url);
-    output.TITLE = `[${data.project.path_with_namespace}] ${type}`;
+    //output.PERMALINK = truncate(data.project.web_url);
+    output.TITLE = `[${data.project.namespace}: ${data.project.name}] ${type}`;
   }
 
   try {
@@ -861,7 +861,8 @@ function sendData(input) {
       icon_url: input.AVATAR_URL
     },
     title: input.TITLE,
-    url: input.PERMALINK,
+    //url: input.PERMALINK,
+    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     description: input.DESCRIPTION,
     fields: input.FIELDS || {},
     timestamp: input.TIME || new Date(),
