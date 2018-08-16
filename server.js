@@ -414,8 +414,16 @@ function processData(type, data) {
 		switch (data.object_attributes.action) {
 			case 'open':
 				output.COLOR = ColorCodes.issue_opened;
-				action = '❌ Issue:';
+				action = '✋ Issue:';
 				break;
+      case 'reopen':
+        output.COLOR = ColorCodes.issue_opened;
+        action = '↪️ Issue:';
+        break;
+      case 'update':
+        output.COLOR = ColorCodes.issue_opened;
+        action = '✏ Issue:';
+        break;
 			case 'close':
 				output.COLOR = ColorCodes.issue_closed;
 				action = '✅ Issue:';
@@ -430,7 +438,7 @@ function processData(type, data) {
 			output.DESCRIPTION += `**${action} [CONFIDENTIAL]**\n`;
 		} else {
 			output.DESCRIPTION += `**${action} #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
-			output.DESCRIPTION += truncate(data.object_attributes.description, StrLen.description);
+			//output.DESCRIPTION += truncate(data.object_attributes.description, StrLen.description); // I don't want no description to be shown
 
 			if (data.assignees && data.assignees.length > 0) {
 			let assignees = { inline: true, name: 'Assigned To:', value: '' };
@@ -568,12 +576,16 @@ function processData(type, data) {
         output.PERMALINK = data.object_attributes.url;
         output.TITLE = `[${data.object_attributes.target.path_with_namespace}] Merge Request Hook`;
 
-        switch (data.object_attributes.action) {
-          case 'open':
+        switch (data.object_attributes.state) {
+          case 'opened':
             output.COLOR = ColorCodes.merge_request_opened;
             output.DESCRIPTION = `❌ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
             break;
-          case 'close':
+          case 'merged':
+            output.COLOR = ColorCodes.merge_request_closed;
+            output.DESCRIPTION = `↪️ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
+            break;
+          case 'closed':
             output.COLOR = ColorCodes.merge_request_closed;
             output.DESCRIPTION = `✅ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
             break;
