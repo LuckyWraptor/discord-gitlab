@@ -574,8 +574,6 @@ function processData(type, data) {
 
       case 'Merge Request Hook':
         output.PERMALINK = data.object_attributes.url;
-        output.TITLE = `[${data.object_attributes.target.path_with_namespace}] Merge Request Hook`;
-
         switch (data.object_attributes.state) {
           case 'opened':
             output.COLOR = ColorCodes.merge_request_opened;
