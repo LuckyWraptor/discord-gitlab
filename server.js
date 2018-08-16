@@ -414,11 +414,11 @@ function processData(type, data) {
 		switch (data.object_attributes.action) {
 			case 'open':
 				output.COLOR = ColorCodes.issue_opened;
-				action = 'Issue Opened:';
+				action = '❌ Issue:';
 				break;
 			case 'close':
 				output.COLOR = ColorCodes.issue_closed;
-				action = 'Issue Closed:';
+				action = '✅ Issue:';
 				break;
 			default:
 				output.COLOR = ColorCodes.issue_comment;
@@ -571,11 +571,11 @@ function processData(type, data) {
         switch (data.object_attributes.action) {
           case 'open':
             output.COLOR = ColorCodes.merge_request_opened;
-            output.DESCRIPTION = `**Merge Request Opened: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
+            output.DESCRIPTION = `❌ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
             break;
           case 'close':
             output.COLOR = ColorCodes.merge_request_closed;
-            output.DESCRIPTION = `**Merge Request Closed: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
+            output.DESCRIPTION = `✅ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
             break;
           default:
             output.COLOR = ColorCodes.merge_request_comment;
