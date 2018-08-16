@@ -614,7 +614,7 @@ function processData(type, data) {
           name: 'Merge Into',
           value: DEDENT `
             ${data.object_attributes.target.namespace}/
-            ${data.object_attributes.target.namespace}:
+            ${data.object_attributes.target.name}:
             ${data.object_attributes.target_branch}`
         });
 
@@ -749,7 +749,6 @@ function processData(type, data) {
         let canon_url = data.repository.git_http_url.slice(0, -'.git'.length);
         let namespace = canon_url.substr(CONFIG.webhook.gitlab_url.length + 1);
 
-        output.TITLE = `[${namespace}] ${type}`;
         output.DESCRIPTION = `**Job: ${data.build_name}**\n`;
         output.PERMALINK = `${canon_url}/-/jobs/${data.build_id}`;
 
