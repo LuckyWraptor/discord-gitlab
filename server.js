@@ -859,7 +859,7 @@ function sendData(input) {
     },
     title: input.TITLE,
     //url: input.PERMALINK,
-    url: '_blank',
+    url: '',
     description: input.DESCRIPTION,
     fields: input.FIELDS || {},
     timestamp: input.TIME || new Date(),
