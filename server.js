@@ -336,7 +336,7 @@ function processData(type, data) {
   }
   if (data.project) {
     //output.PERMALINK = truncate(data.project.web_url);
-    output.TITLE = `[${data.project.namespace}: ${data.project.name}] ${type}`;
+    output.TITLE = `[${data.project.namespace}: ${data.project.name}]`;
   }
 
   try {
