@@ -1,247 +1,13 @@
-/*
- * HTTP request handling based on
- * https://blog.kyletolle.com/using-node-js-to-inspect-webhook-calls/
- * Test it in a second client with cURL
- * curl -X POST localhost:9000 -H 'Content-Type: text/plain' -d '{'payload':'test'}'
- * cat sample/unrelated.json | curl -i -v -X POST localhost:9000 -H 'Content-Type: text/plain' -H 'X-Gitlab-Token: TOKEN' -H 'X-Gitlab-Event: EVENT' --data-binary '@-'
- */
+/* General */
+console.log("'Gitlab -> Discord' bot\r\nVersion 1.0.0\r\nForked by: Wraptor\r\nOriginal creator: FlyingKatsu Discord Bots");
 
-// Import FS for reading sample files
 const FS = require('fs');
-// Import the CRYPTO module for verifying tokens from HTTP request headers
 const CRYPTO = require('crypto');
-// Import the HTTP module for sending and receiving data
 const HTTP = require('http');
-// Import the discord.js module
 const DISCORD = require('discord.js');
-// Import DEDENT for nice template literal strings
 const DEDENT = require('dedent-js');
 
-// Import CONFIG file
-const CONFIG = require('./require/config.json');
-const SECRET = CONFIG.webhook.token || process.env.DGW_WEBHOOK_TOKEN || '';
-const BOT_SECRET = CONFIG.bot.token || process.env.DGW_BOT_TOKEN || '';
-
-/* ============================================
- * Set up states and timers
- * ========================================= */
-var storedData = [];
-var userTimerEnabled = false;
-var disconnectHandled = false;
-var readyMsg = 'ready';
-var IS_DEBUG_MODE = false;
-
-/* ============================================
- * Set up Webhook stuff
- * ========================================= */
-
-// Create an instance of a Discord client
-const CLIENT = new DISCORD.Client();
-
-const HOOK = new DISCORD.WebhookClient(CONFIG.webhook.id, CONFIG.webhook.token);
-
-/* ============================================
- * Timer to check if disconnected from Discord
- * ========================================= */
-
-var checkDisconnect = function() {
-  //console.log('### Routine check client.status: ' + CLIENT.status + '; uptime: ' + CLIENT.uptime);
-  // if connection is lost, 
-  if (!userTimerEnabled && !disconnectHandled && CLIENT != null && CLIENT.status == 5) {
-    // set disconnectHandled
-    disconnectHandled = true;
-    // set ready message to 'Recovering from unexpected shutdown'
-    readyMsg = 'rebooted';
-    // try to login again (when ready, set interval again) 
-    CLIENT.login(CONFIG.bot.token);
-  }
-};
-
-// Set a timeout for 120000 or 2 minutes  OR 3000 for 3sec
-var interval_dc = setInterval(checkDisconnect, 3000);
-
-
-/* ============================================
- * Set up Server listening stuff
- * ========================================= */
-
-// Create our local webhook-receiving server
-var app = HTTP.createServer(handler);
-
-// Handler for receiving HTTP requests
-function handler(req, res) {
-
-  // Assume it's all good at first...
-  var statusCode = 200;
-
-  // Keep track of incoming data
-  let data = '';
-  let type = req.headers['content-type'];
-  let passChecked = null;
-
-  // Correctly format Response according to https://nodejs.org/en/docs/guides/anatomy-of-an-http-transaction/
-  let headers = req.headers;
-  let method = req.method;
-  let url = req.url;
-  let body = '';
-
-  // Only do stuff if the request came via POST
-  if (req.method == 'POST') {
-
-    console.log('---- Post Request Detected ----');
-
-    // Data collection handler
-    req.on('data', function(chunk) {
-
-      console.log('reading...');
-      //data += chunk;
-
-
-      if (passChecked === false) { // this data is already determined to be invalid
-        console.log('Data was invalid, skipping...');
-        return;
-
-      } else if (passChecked != null) {
-        data += chunk;
-        return;
-
-      } else {
-
-        //console.log(req.headers);
-
-        // Is the first chunk, check the headers for validity
-        if (req.headers.hasOwnProperty('x-gitlab-token')) {
-
-          // Compare tokens
-          let a = Buffer.from(req.headers['x-gitlab-token']);
-          let b = Buffer.from(SECRET);
-          let isValid = (SECRET != '') && (a.length - b.length) == 0 && CRYPTO.timingSafeEqual(a, b);
-
-          if (!isValid) {
-            // otherwise, do nothing
-            console.log('Invalid');
-            passChecked = false;
-
-            // send a Bad Request response
-            statusCode = 400;
-            res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-            let responseBody = {
-              headers: headers,
-              method: method,
-              url: url,
-              body: body
-            };
-            res.write(JSON.stringify(responseBody));
-            res.end();
-
-            // stop receiving request data
-            req.destroy(new MyError('Invalid token'));
-            console.log('==== DESTROYED ====');
-            return;
-
-          } else {
-            // do something
-            passChecked = true;
-            statusCode = 200;
-
-            // get the event type
-            type = req.headers['x-gitlab-event'];
-            console.log('event type is: ', type);
-
-            // increment data
-            data += chunk;
-          }
-
-        } else { // No Gitlab header detected
-          // otherwise, do nothing
-          console.log('Not from GitLab');
-          passChecked = false;
-
-          // send a Bad Request response
-          statusCode = 400;
-          res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-          let responseBody = {
-            headers: headers,
-            method: method,
-            url: url,
-            body: body
-          };
-          res.write(JSON.stringify(responseBody));
-          res.end();
-
-          // stop receiving request data
-          req.destroy(new MyError('Not from GitLab'));
-          console.log('==== DESTROYED ====');
-          return;
-        }
-      }
-
-    });
-
-    // Completion handler
-    req.on('end', function() {
-      console.log('finishing up...');
-
-      if (passChecked) {
-        // Let the sender know we received things alright
-        res.setHeader('Content-Type', 'application/json');
-        let responseBody = {
-          headers: headers,
-          method: method,
-          url: url,
-          body: body
-        };
-        res.end(JSON.stringify(responseBody));
-
-        // Process Data
-        try {
-          //console.log(data);
-          // Log the data for debugging
-          debugData(data);
-
-          // To accept everything as a string
-          //data = JSON.parse(JSON.stringify(data));
-
-          // To read JSON as JSON and everything else as a string
-          //data = (headers['content-type'] == 'application/json') ? JSON.parse(data) : ''+data;
-
-          // Assume only JSON formatting, and let all else be caught as an error and read as a string
-          data = JSON.parse(data);
-
-          processData(type, data);
-
-        } catch (e) {
-          console.log('Error Context: Data is not formatted as JSON');
-          console.error(e);
-          processData('Known Error', { message: 'Expected JSON, but received a possibly mislabeled ' + headers['content-type'], body: JSON.stringify(data) });
-        }
-      }
-      console.log('==== DONE ====');
-    });
-
-    // Error Handler
-    req.on('error', function(e) {
-      console.log('Error Context: handling an HTTP request');
-      console.error(e);
-    });
-
-  }
-
-  // TODO: handle other HTTP request types
-
-}
-
-// Debug Mode helper
-function debugData(data) {
-  if (IS_DEBUG_MODE) {
-    let channel = CLIENT.channels.get(CONFIG.bot.debug_channel_id);
-    channel.send(data, { code: 'json', split: { maxLength: 1500, char: ',' } })
-      .catch(console.error);
-  }
-}
-
-// Colors corresponding to different events
-const ColorCodes = {
+const colorCodes = {
   issue_opened: 15426592, // orange
   issue_closed: 5198940, // grey
   issue_comment: 15109472, // pale orange
@@ -256,8 +22,7 @@ const ColorCodes = {
   green: 2530048,
   grey: 5198940
 };
-
-const StrLen = {
+const stringLengths = {
   title: 128,
   description: 128,
   field_name: 128,
@@ -267,10 +32,231 @@ const StrLen = {
   json: 256,
   snippet_code: 256
 };
+const dateOptions = {
+   //https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toLocaleString
+  hour12: true,
+  weekday: "short",
+  day: "numeric",
+  month: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  timeZoneName: "short"
+};
+function CustomError(message) {
+  this.name = 'CustomError';
+  this.message = message || 'Default Message';
+  this.stack = (new Error()).stack;
+}
+CustomError.prototype = Object.create(Error.prototype);
+CustomError.prototype.constructor = CustomError;
 
-/**
- * Helper method for ensuring data string is of a certain length or less and not null
- */
+// Import CONFIG file
+const CONFIG = require('./require/config.json');
+var MEMBERS = require('./require/member-binds.json');
+
+
+/* Logging */
+const logTypes = [
+  "Debug",
+  "Info",
+  "Warning",
+  "Error"
+];
+function print(iType, sString, bErrorExit)
+{
+  if(iType > 0 || (CONFIG.application != null && CONFIG.application.debug)) {
+    console.log("[" + logTypes[iType] + "] " + sString);
+  }
+
+  if(bErrorExit)
+    process.exit(1);
+}
+
+
+
+/* Webhooks */
+print(0, "Creating Discord webhook clients.");
+var HOOKS = {};
+if(CONFIG.webhooks)
+{
+  for(let webhookId in CONFIG.webhooks) {
+    if(CONFIG.webhooks.hasOwnProperty(webhookId)) 
+    {
+      let tWebhook = CONFIG.webhooks[webhookId];
+      try {
+        HOOKS[webhookId]  = new DISCORD.WebhookClient(tWebhook.credentials.id, tWebhook.credentials.token);
+      }
+      catch(ex)
+      {
+        print(3, "Invalid credentials for webhook: " + webhookId, true);
+        print(0, "Webhook error: " + ex);
+      }
+    }
+  }
+}
+else
+{
+  print(3, "No webhooks configured!", true);
+}
+print(1, "Created Discord webhook clients.");
+
+/* Listener */
+print(0, "Initializing listener");
+var TOKENS = {};
+if(CONFIG.listener != null)
+{
+  let sErrorString;
+  if(CONFIG.listener.address == null || typeof CONFIG.listener.address != 'string')
+    sErrorString = "address";
+  else if(CONFIG.listener.port == null || isNaN(CONFIG.listener.port))
+    sErrorString = "port";
+  
+  else if(CONFIG.listener.access_tokens != null)
+  {
+    for(let token in CONFIG.listener.access_tokens) {
+      if(CONFIG.listener.access_tokens.hasOwnProperty(token)) 
+      {
+        TOKENS[Buffer.from(token)] = CONFIG.listener.access_tokens[token];
+      }
+    }
+  }
+
+  if(sErrorString != null)
+    print(3, "Invalid listener configuration for the " + sErrorString, true);
+}
+else
+{
+  print(3, "No listener configuration!", true);
+}
+
+var HTTPListener = HTTP.createServer(appHandler);
+function appHandler(req, res)
+{
+
+  let data = '';
+  let type = req.headers['content-type'];
+  let passChecked = null;
+  let tToken = null;
+
+  let headers = req.headers;
+  let method = req.method;
+  let url = req.url;
+  let body = '';
+
+  if (req.method == 'POST') {
+    print(0, "Incoming post request.");
+
+    req.on('data', function(chunk) {
+      print(0, 'Reading post data');
+
+      if (passChecked === false) { // this data is already determined to be invalid
+        print(3, 'Received invalid data, ignoring...');
+      } else if (passChecked != null) {
+        data += chunk;
+      } else {
+        if (req.headers.hasOwnProperty('x-gitlab-token')) {
+          tToken = retrieveToken(req.headers['x-gitlab-token']);
+          if (tToken != null) {
+            passChecked = true;
+            type = req.headers['x-gitlab-event'];
+            data += chunk;
+
+            print(0, 'Received post hook-type is: ', type);
+          }
+          else
+          {
+            print(2, "Attempted hook post with invalid token: \r\n" + req.headers['x-gitlab-token'] + "\r\n");
+            passChecked = false;
+            appResponder(res, 400, { headers: headers, method: method, url: url, body: body }, "Invalid access token!");
+            return;
+          }
+        } else {
+          print(2, 'Invalid, non-gitlab request received');
+          passChecked = false;
+          appResponder(res, 400, { headers: headers, method: method, url: url, body: body }, "Not from a GitLab platform");
+        }
+      }
+    });
+
+    // Completion handler
+    req.on('end', function() {
+      print(0, 'Finishing request handling...');
+
+      if (passChecked) {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify({ headers: headers, method: method, url: url, body: body }));
+
+        try {
+          if(CONFIG.application.debug)
+          {
+            console.log(data);
+          }
+
+          // To accept everything as a string
+          //data = JSON.parse(JSON.stringify(data));
+          // To read JSON as JSON and everything else as a string
+          //data = (headers['content-type'] == 'application/json') ? JSON.parse(data) : ''+data;
+          // Assume only JSON formatting, and let all else be caught as an error and read as a string
+          data = JSON.parse(data);
+          processData(type, data, tToken);
+
+        } catch (e) {
+          print(3, 'Error for received context: Data is not formatted as JSON');
+          console.error(e);
+          processData('Known Error', { message: 'Expected JSON, but received a possibly mislabeled ' + headers['content-type'], body: JSON.stringify(data) });
+        }
+      }
+      print(0, 'Finished request');
+    });
+
+    // Error Handler
+    req.on('error', function(e) {
+      print(3, 'Error Context: handling an HTTP request');
+      console.error(e);
+    });
+  }
+}
+function appResponder(res, iStatus, tBody, sDestroy)
+{
+  res.writeHead(iStatus, {'Content-Type': 'application/json'});
+  res.write(JSON.stringify(tBody));
+  res.end();
+
+  if(sDestroy != null)
+    res.destroy(new CustomError(sDestroy));
+}
+function retrieveToken(sToken)
+{
+  let buffProvidedToken = Buffer.from(sToken);
+
+  for(let buffToken in TOKENS)
+  {
+    if(buffToken == buffProvidedToken && ((buffToken.length - buffProvidedToken.length) == 0) && CRYPTO.timingSafeEqual(buffToken, buffProvidedToken))
+    {
+      return TOKEN[buffToken];
+    }
+  }
+}
+print(1, "Initialized listener");
+
+
+
+
+
+
+
+
+
+
+/* Utilities */
+
+function getAvatarURL(str) {
+  if (str == null) return "";
+  if (str.startsWith('/')) return CONFIG.webhook.gitlab_url + str;
+  return str;
+}
 function truncate(str, count, noElipses, noNewLines) {
   if (noNewLines) str = str.split('\n').join(' ');
   if (!count && str) return str;
@@ -283,15 +269,10 @@ function truncate(str, count, noElipses, noNewLines) {
     return "";
   }
 }
-
-// Assumes str is a gravatar url or a relative url to an avatar image upload
-// NOTE: this may not be needed in the latest GitLab instances
-function getAvatarURL(str) {
-  if (str == null) return "";
-  if (str.startsWith('/')) return CONFIG.webhook.gitlab_url + str;
-  return str;
+function msToTime(s) {
+  var pad = (n, z = 2) => ('00' + n).slice(-z);
+  return pad(s / 3.6e6 | 0) + 'h:' + pad((s % 3.6e6) / 6e4 | 0) + 'm:' + pad((s % 6e4) / 1000 | 0) + '.' + pad(s % 1000, 3) + 's';
 }
-
 
 /* 
  * A function for processing data received from an HTTP request
@@ -300,16 +281,7 @@ function getAvatarURL(str) {
 function processData(type, data) {
   console.log('processing...');
 
-  dateOptions = { //https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toLocaleString
-    hour12: true,
-    weekday: "short",
-    day: "numeric",
-    month: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    timeZoneName: "short"
-  };
+  
 
   let output = {
     COLOR: ColorCodes.default,
@@ -882,13 +854,7 @@ function sendData(input) {
 
 
 // Custom Errors
-function MyError(message) {
-  this.name = 'MyError';
-  this.message = message || 'Default Message';
-  this.stack = (new Error()).stack;
-}
-MyError.prototype = Object.create(Error.prototype);
-MyError.prototype.constructor = MyError;
+
 
 
 /* A function that should use the appropriate decryption scheme for the specified webhook source
@@ -1161,88 +1127,48 @@ const COMMANDS = {
   }
 };
 
-/* ============================================
- * Discord.JS Event Handlers
- * ========================================= */
 
-// Status alert message embeds
-const STATUS_EMBEDS = {
-  status: {
-    color: ColorCodes.default,
-    title: 'Bot Status Update',
-    description: "See getStatusEmbed",
-    timestamp: new Date(),
-    footer: { icon_url: CONFIG.bot.icon_url, text: CONFIG.bot.name }
-  },
-  ready: {
-    color: ColorCodes.default,
-    title: 'Bot Status Update',
-    description: `${CONFIG.bot.name} is now online and ready to process commands`,
-    timestamp: new Date(),
-    footer: { icon_url: CONFIG.bot.icon_url, text: CONFIG.bot.name }
-  },
-  recovery: {
-    color: ColorCodes.default,
-    title: 'Bot Status Update',
-    description: 'Default text',
-    timestamp: new Date(),
-    footer: { icon_url: CONFIG.bot.icon_url, text: CONFIG.bot.name }
-  },
-  rebooted: {
-    color: ColorCodes.default,
-    title: 'Bot Status Update',
-    description: `${CONFIG.bot.name} has been restarted.  Any unprocessed data sent before this message will need to be resubmitted.`,
-    timestamp: new Date(),
-    footer: { icon_url: CONFIG.bot.icon_url, text: CONFIG.bot.name }
-  },
-  listening: {
-    color: ColorCodes.default,
-    title: 'Bot Status Update',
-    description: `Ready to listen for HTTP requests`,
-    timestamp: new Date(),
-    footer: { icon_url: CONFIG.bot.icon_url, text: CONFIG.bot.name }
+
+
+
+
+
+
+
+
+
+
+print(0, "Initializing Discord client.");
+const CLIENT = new DISCORD.Client();
+var CLIENT_userTimerEnabled = false;
+var CLIENT_disconnectHandled = false;
+var CLIENT_readyStatus = 'ready';
+var CLIENT_embedsQueue = [];
+
+var keepAlive = function() {
+  //print(0, '### Routine check client.status: ' + CLIENT.status + '; uptime: ' + CLIENT.uptime + ".");
+
+  if (!CLIENT_userTimerEnabled && !CLIENT_disconnectHandled
+    && CLIENT != null && CLIENT.status == 5) {
+      CLIENT_disconnectHandled = true;
+
+    // set ready message to 'Recovering from unexpected shutdown'
+    CLIENT_readyStatus = 'rebooted';
+    CLIENT.login(CONFIG.bot.credentials.token);
   }
 };
+var CLIENT_keepAlive = setInterval(keepAlive, 3000);
+print(0, "Initialized Discord client's keepalive interval.");
 
-/**
- * https://stackoverflow.com/a/9763769
- * @param {*} s number or string representing numerical value in ms
- * @returns {string} HH:MM:SS
- */
-function msToTime(s) {
-  // Pad to 2 or 3 digits, default is 2
-  var pad = (n, z = 2) => ('00' + n).slice(-z);
-  return pad(s / 3.6e6 | 0) + 'h:' + pad((s % 3.6e6) / 6e4 | 0) + 'm:' + pad((s % 6e4) / 1000 | 0) + '.' + pad(s % 1000, 3) + 's';
-}
-
-function getStatusEmbed(key) {
-  if (STATUS_EMBEDS[key]) {
-    STATUS_EMBEDS[key].timestamp = new Date();
-    if (key == "status") {
-      STATUS_EMBEDS[key].description = `${CONFIG.bot.name} has status code ${CLIENT.status} and uptime ${msToTime(CLIENT.uptime)}`;
-    }
-  }
-  return STATUS_EMBEDS[key];
-}
-
-// The ready event is vital, it means that your bot will only start reacting to information
-// from Discord _after_ ready is emitted
 CLIENT.on('ready', () => {
-  console.log(`${CONFIG.bot.name} is ready to receive data`);
+  print(1, `${CONFIG.bot.nickname} is ready.`);
 
-  if(IS_DEBUG_MODE)
-  {
-    HOOK.send('', { embeds: [getStatusEmbed(readyMsg)] })
-      .then((message) => console.log(`Sent ready embed`))
-      .catch(shareDiscordError(null, `[onReady] Sending status embed [${readyMsg}] via WebHook: ${HOOK.name}`));
-  }
-
-  if (disconnectHandled) {
-    disconnectHandled = false;
+  if (CLIENT_disconnectHandled) {
+    CLIENT_disconnectHandled = false;
 
     // Process stored data
-    let numStored = storedData.length;
-    let collectedEmbeds = [getStatusEmbed('recovery')];
+    let numStored = CLIENT_embedsQueue.length;
+    let collectedEmbeds = [];
     for (let i = 0; i < numStored; i++) {
       collectedEmbeds.push(storedData.pop());
     }
@@ -1253,27 +1179,15 @@ CLIENT.on('ready', () => {
       .then((message) => console.log(`Sent stored embeds`))
       .catch(shareDiscordError(null, `[onReady] Sending recovered embeds via WebHook: ${HOOK.name}`));
 
-  } else {
-
-    if (!app.listening) {
-      // Start listening for HTTP requests
-      app.listen(
-        CONFIG.webhook.server.port,
-        CONFIG.webhook.server.address,
-        () => {
-          console.log('Ready to listen at ', app.address());
-
-          if(IS_DEBUG_MODE)
-          {
-            HOOK.send('', { embeds: [getStatusEmbed('listening')] })
-              .then((message) => console.log(`Sent listening embed`))
-              .catch(shareDiscordError(null, `[onListen] Sending status [listening] via WebHook: ${HOOK.name}`));
-          }
-        });
-    }
-
   }
 
+  if (!HTTPListener.listening) {
+    // Start listening for HTTP requests
+    HTTPListener.listen(
+      {port: CONFIG.listener.port, host: CONFIG.listener.address, exclusive: true},
+      () => { console.log('[Info] HTTP Listening at', HTTPListener.address()); }
+    );
+  }
 });
 
 // Create an event listener for messages
@@ -1281,16 +1195,16 @@ CLIENT.on('message', msg => {
   // Ignore messages from DMs, Gropu DMs, and Voice
   if (msg.channel.type !== 'text') return;
 
-  // Only read message if it starts with command prefix
-  if (msg.content.startsWith(CONFIG.bot.prefix)) {
-
+  // Only read message if mentioned
+  if (msg.mentions.members.get(CONFIG.bot.credentials.id) != null) {
+    //console.log(msg);
     // Parse cmd and args
-    let [cmd, ...arg] = msg.content.substring(CONFIG.bot.prefix.length).toLowerCase().split(' ');
+    // let [cmd, ...arg] = msg.content.substring(CONFIG.bot.prefix.length).toLowerCase().split(' ');
 
-    // Only process command if it is recognized
-    if (COMMANDS.hasOwnProperty(cmd)) {
-      COMMANDS[cmd](msg, arg);
-    }
+    // // Only process command if it is recognized
+    // if (COMMANDS.hasOwnProperty(cmd)) {
+    //   COMMANDS[cmd](msg, arg);
+    // }
 
   }
 });
@@ -1300,7 +1214,7 @@ CLIENT.on('disconnect', closeEvent => {
   console.log(d.toLocaleString());
 
   if (closeEvent) {
-    console.log(CONFIG.bot.name + ' went offline with code ' + closeEvent.code + ': ' + closeEvent.reason);
+    console.log(CONFIG.bot.nickname + ' went offline with code ' + closeEvent.code + ': ' + closeEvent.reason);
     console.log('Exiting...');
   } else {
     console.log(`${CONFIG.bot.name} went offline with unknown code`);
@@ -1330,11 +1244,13 @@ CLIENT.on('error', error => {
     console.log('Unknown error');
   }
 });
+print(1, "Initialized Discord client.");
 
 
 /* ============================================
  * Log our bot into Discord
  * ========================================= */
-console.log('Logging in...');
+print(0, 'Logging in Discord client...');
 // Log our bot in
-CLIENT.login(BOT_SECRET);
+CLIENT.login(CONFIG.bot.credentials.token || process.env.DG_CLIENT_TOKEN);
+print(1, 'Logged in Discord client...');

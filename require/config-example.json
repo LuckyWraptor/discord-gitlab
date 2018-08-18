@@ -1,4 +1,7 @@
 {
+  "application": {
+      "debug": false
+  },
   "bot": {
     "nickname": "James",
     "credentials": {
@@ -8,20 +11,23 @@
     "master_user_id": "Right-click > Copy ID in Discord [Dev Mode] of the user that is allowed to disconnect this bot",
     "debug_channel_id": "Right-click > Copy ID in Discord [Dev Mode] of the channel you want to send error reports to. You MUST give the bot permission to send messages in this channel."
   },
+  "filters": {
+    "confidential": false,
+    "hyperlinks": true
+  },
   "listener": {
-    "address": "localhost",
-    "family": "all",
+    "address": "::",
     "port": 8000,
 
     "access_tokens": {
-      "WOuF0PqhGaiuCmHUw9ATO8AwhjAC5zQ62bEDDuBTQwwAubZqy92ZQTcSvaeGSdBH": {
+      "(gitlab secret token, easy-generate one with generatetoken.js)": {
         "gitlabs": [
           "*",
           "gitlab.domain.tld"
         ],
         "webhooks": [
-          "someidentifier",
-          "*"
+          "*",
+          "someidentifier"
         ],
         "paths": [
           "*",
@@ -29,8 +35,8 @@
           "namespace/project"
         ],
         "filters": {
-          "hyperlinks": true, 
-          "confidential": false
+          "confidential": false,
+          "hyperlinks": true
         },
         "events": {
           "issues": [
@@ -47,13 +53,13 @@
       }
     }
   },
-  "hooks": {
+  "webhooks": {
     "someidentifier": {
       "name": "Hook name",
-      "icon": "image url",
-      "webhook": {
+      "image_url": "image url",
+      "credentials": {
         "id": "{ID} FROM https://discordapp.com/api/webhooks/{ID}/{TOKEN} which is generated when you create a webhook in Discord",
-        "token": "{TOKEN} FROM https://discordapp.com/api/webhooks/{ID}/{TOKEN} (Use this for the Secret Token in GitLab)"
+        "token": "{TOKEN} FROM https://discordapp.com/api/webhooks/{ID}/{TOKEN}"
       }
     }
   }
