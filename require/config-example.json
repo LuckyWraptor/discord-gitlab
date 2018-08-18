@@ -1,0 +1,60 @@
+{
+  "bot": {
+    "nickname": "James",
+    "credentials": {
+      "id": "The 'Client ID' created at https://discordapp.com/developers/applications/me",
+      "token": "The 'App Bot User Token' created at https://discordapp.com/developers/applications/me when you make a Bot User application"
+    },
+    "master_user_id": "Right-click > Copy ID in Discord [Dev Mode] of the user that is allowed to disconnect this bot",
+    "debug_channel_id": "Right-click > Copy ID in Discord [Dev Mode] of the channel you want to send error reports to. You MUST give the bot permission to send messages in this channel."
+  },
+  "listener": {
+    "address": "localhost",
+    "family": "all",
+    "port": 8000,
+
+    "access_tokens": {
+      "WOuF0PqhGaiuCmHUw9ATO8AwhjAC5zQ62bEDDuBTQwwAubZqy92ZQTcSvaeGSdBH": {
+        "gitlabs": [
+          "*",
+          "gitlab.domain.tld"
+        ],
+        "webhooks": [
+          "someidentifier",
+          "*"
+        ],
+        "paths": [
+          "*",
+          "namespace/*",
+          "namespace/project"
+        ],
+        "filters": {
+          "hyperlinks": true, 
+          "confidential": false
+        },
+        "events": {
+          "issues": [
+            "* or updated/opened/closed/comment"
+          ]
+        },
+        "templates": {
+          "issues": {
+            "updated": "./templates/issues/updated.txt",
+            "opened": "./templates/issues/opened.txt",
+            "closed": "./templates/issues/closed.txt"
+          }
+        }
+      }
+    }
+  },
+  "hooks": {
+    "someidentifier": {
+      "name": "Hook name",
+      "icon": "image url",
+      "webhook": {
+        "id": "{ID} FROM https://discordapp.com/api/webhooks/{ID}/{TOKEN} which is generated when you create a webhook in Discord",
+        "token": "{TOKEN} FROM https://discordapp.com/api/webhooks/{ID}/{TOKEN} (Use this for the Secret Token in GitLab)"
+      }
+    }
+  }
+}
