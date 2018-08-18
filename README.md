@@ -1,5 +1,3 @@
-[![Discord Server](https://discordapp.com/api/guilds/310097366759768065/embed.png)](https://discord.gg/tZWqhWd)
-
 # Discord-GitLab Webhook Bot
 
 A Discord bot for using webhooks with GitLab (and extendable for other custom webhooks not yet built into Discord).

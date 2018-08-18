@@ -1,8 +1,11 @@
 # Node Dependencies
 node_modules/**
 
-# Production config files (used for testing, but containing sensitive info)
+# Production config files.
 require/config.json
+require/member-binds.json
+
+templates/**
 
 # Past versions of the dev directory
 v_*.*.*/**
