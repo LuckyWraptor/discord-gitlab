@@ -8,8 +8,7 @@
       "id": "The 'Client ID' created at https://discordapp.com/developers/applications/me",
       "token": "The 'App Bot User Token' created at https://discordapp.com/developers/applications/me when you make a Bot User application"
     },
-    "master_user_id": "Right-click > Copy ID in Discord [Dev Mode] of the user that is allowed to disconnect this bot",
-    "debug_channel_id": "Right-click > Copy ID in Discord [Dev Mode] of the channel you want to send error reports to. You MUST give the bot permission to send messages in this channel."
+    "master_user_id": "Right-click > Copy ID in Discord [Dev Mode] of the user that is allowed to disconnect this bot"
   },
   "filters": {
     "confidential": false,
@@ -18,7 +17,7 @@
   "listener": {
     "address": "::",
     "port": 8000,
-
+    "force_host_match": "bot.domain.tld",
     "access_tokens": {
       "(gitlab secret token, easy-generate one with generatetoken.js)": {
         "gitlabs": [
@@ -56,7 +55,6 @@
   "webhooks": {
     "someidentifier": {
       "name": "Hook name",
-      "image_url": "image url",
       "credentials": {
         "id": "{ID} FROM https://discordapp.com/api/webhooks/{ID}/{TOKEN} which is generated when you create a webhook in Discord",
         "token": "{TOKEN} FROM https://discordapp.com/api/webhooks/{ID}/{TOKEN}"

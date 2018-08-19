@@ -7,6 +7,19 @@ const HTTP = require('http');
 const DISCORD = require('discord.js');
 const DEDENT = require('dedent-js');
 
+var PATTERN_URLSPLITTER =/(.+:\/\/)?([^\/]+)(\/.*)*/i;
+
+const HookType = {
+  PUSH: "push",
+  TAG_PUSH: "tag_push",
+  ISSUE: "issue",
+  ISSUE_CONFIDENTIAL: "confidential_issue",
+  NOTE: "note",
+  MERGE: "merge_request",
+  WIKI: "wiki_page",
+  PIPELINE: "pipeline",
+  BUILD: "build",
+}
 const colorCodes = {
   issue_opened: 15426592, // orange
   issue_closed: 5198940, // grey
@@ -83,9 +96,8 @@ if(CONFIG.webhooks)
   for(let webhookId in CONFIG.webhooks) {
     if(CONFIG.webhooks.hasOwnProperty(webhookId)) 
     {
-      let tWebhook = CONFIG.webhooks[webhookId];
       try {
-        HOOKS[webhookId]  = new DISCORD.WebhookClient(tWebhook.credentials.id, tWebhook.credentials.token);
+        HOOKS[webhookId]  = new DISCORD.WebhookClient(CONFIG.webhooks[webhookId].credentials.id, CONFIG.webhooks[webhookId].credentials.token);
       }
       catch(ex)
       {
@@ -117,7 +129,8 @@ if(CONFIG.listener != null)
     for(let token in CONFIG.listener.access_tokens) {
       if(CONFIG.listener.access_tokens.hasOwnProperty(token)) 
       {
-        TOKENS[Buffer.from(token)] = CONFIG.listener.access_tokens[token];
+        TOKENS[token] = CONFIG.listener.access_tokens[token];
+        TOKENS[token].TOKEN_BUFFER = Buffer.from(token);
       }
     }
   }
@@ -129,13 +142,23 @@ else
 {
   print(3, "No listener configuration!", true);
 }
+function retrieveToken(sProvidedToken)
+{
+  let buffProvidedToken = Buffer.from(sProvidedToken);
+  for(let sToken in TOKENS)
+  {
+    let tToken = TOKENS[sToken];
+    if((tToken.TOKEN_BUFFER.length - buffProvidedToken.length) == 0 && CRYPTO.timingSafeEqual(tToken.TOKEN_BUFFER, buffProvidedToken))
+    {
+      return tToken;
+    }
+  }
+}
 
 var HTTPListener = HTTP.createServer(appHandler);
 function appHandler(req, res)
 {
-
   let data = '';
-  let type = req.headers['content-type'];
   let passChecked = null;
   let tToken = null;
 
@@ -155,27 +178,33 @@ function appHandler(req, res)
       } else if (passChecked != null) {
         data += chunk;
       } else {
-        if (req.headers.hasOwnProperty('x-gitlab-token')) {
+        let sErrorString;
+        if(CONFIG.listener.force_host_match != null && req.headers.hasOwnProperty('host') && req.headers['host'] != CONFIG.listener.force_host_match) {
+          print(2, 'Provided wrong host header: ' + req.headers['host']);
+          sErrorString = "Provided host header is incorrect!";
+        }
+        else if (req.headers.hasOwnProperty('x-gitlab-token')) {
           tToken = retrieveToken(req.headers['x-gitlab-token']);
           if (tToken != null) {
             passChecked = true;
-            type = req.headers['x-gitlab-event'];
             data += chunk;
-
-            print(0, 'Received post hook-type is: ', type);
+            return;
           }
           else
           {
             print(2, "Attempted hook post with invalid token: \r\n" + req.headers['x-gitlab-token'] + "\r\n");
-            passChecked = false;
-            appResponder(res, 400, { headers: headers, method: method, url: url, body: body }, "Invalid access token!");
-            return;
+            sErrorString = "Invalid access token!";
           }
         } else {
           print(2, 'Invalid, non-gitlab request received');
-          passChecked = false;
-          appResponder(res, 400, { headers: headers, method: method, url: url, body: body }, "Not from a GitLab platform");
+          sErrorString = "Invalid, non-gitlab request!";
         }
+
+        passChecked = false;
+        res.writeHead(400, {'Content-Type': 'application/json'});
+        res.write(JSON.stringify({ headers: headers, method: method, url: url, body: body }));
+        res.end();
+        res.destroy(new CustomError(sErrorString));
       }
     });
 
@@ -189,24 +218,18 @@ function appHandler(req, res)
           JSON.stringify({ headers: headers, method: method, url: url, body: body }));
 
         try {
-          if(CONFIG.application.debug)
-          {
-            console.log(data);
-          }
-
           // To accept everything as a string
           //data = JSON.parse(JSON.stringify(data));
           // To read JSON as JSON and everything else as a string
           //data = (headers['content-type'] == 'application/json') ? JSON.parse(data) : ''+data;
           // Assume only JSON formatting, and let all else be caught as an error and read as a string
           data = JSON.parse(data);
-          processData(type, data, tToken);
-
         } catch (e) {
           print(3, 'Error for received context: Data is not formatted as JSON');
           console.error(e);
-          processData('Known Error', { message: 'Expected JSON, but received a possibly mislabeled ' + headers['content-type'], body: JSON.stringify(data) });
+          return;
         }
+        processData(data, tToken);
       }
       print(0, 'Finished request');
     });
@@ -218,73 +241,54 @@ function appHandler(req, res)
     });
   }
 }
-function appResponder(res, iStatus, tBody, sDestroy)
-{
-  res.writeHead(iStatus, {'Content-Type': 'application/json'});
-  res.write(JSON.stringify(tBody));
-  res.end();
-
-  if(sDestroy != null)
-    res.destroy(new CustomError(sDestroy));
-}
-function retrieveToken(sToken)
-{
-  let buffProvidedToken = Buffer.from(sToken);
-
-  for(let buffToken in TOKENS)
+function processData(data, tToken) {
+  print(0, 'Processing result...');
+  if(data.length <= 2)
   {
-    if(buffToken == buffProvidedToken && ((buffToken.length - buffProvidedToken.length) == 0) && CRYPTO.timingSafeEqual(buffToken, buffProvidedToken))
+    return;
+  }
+
+  if(data.event_name == null && data.object_kind == null)
+  {
+    print(2, "No (Hook-type) provided in request, discarding");
+    return;
+  }
+  let enumType = data.event_name || data.object_kind;
+
+  let tDomain = getHostnameSplit(enumType, data);
+  if(tDomain == null)
+  {
+    print(2, "No gitlab url specified, discarding.");
+    return;
+  }
+
+  // Allow all if none specified (Default behaviour).
+  if(tToken.gitlabs != null)
+  {
+    if(!getIsHostnameAllowed(tDomain[2], tToken.gitlabs))
     {
-      return TOKEN[buffToken];
+      print(2, "Gitlab url specified isn't allowed to post using this token.");
+      return;
     }
   }
-}
-print(1, "Initialized listener");
-
-
-
-
-
-
-
-
-
-
-/* Utilities */
-
-function getAvatarURL(str) {
-  if (str == null) return "";
-  if (str.startsWith('/')) return CONFIG.webhook.gitlab_url + str;
-  return str;
-}
-function truncate(str, count, noElipses, noNewLines) {
-  if (noNewLines) str = str.split('\n').join(' ');
-  if (!count && str) return str;
-  if (count && str && noElipses) {
-    return str.substring(0, count);
-  } else if (str && str.length > 0) {
-    if (str.length <= count) return str;
-    return str.substring(0, count - 3) + '...';
-  } else {
-    return "";
-  }
-}
-function msToTime(s) {
-  var pad = (n, z = 2) => ('00' + n).slice(-z);
-  return pad(s / 3.6e6 | 0) + 'h:' + pad((s % 3.6e6) / 6e4 | 0) + 'm:' + pad((s % 6e4) / 1000 | 0) + '.' + pad(s % 1000, 3) + 's';
-}
-
-/* 
- * A function for processing data received from an HTTP request
- * 
- */
-function processData(type, data) {
-  console.log('processing...');
-
   
+  // Allow all if none specified (Default behaviour).
+  if(tToken.paths != null)
+  {
+    if(!getIsPathAllowed(data, tToken.paths))
+    {
+      print(2, "Project path specified isn't allowed to post using this token.");
+      return;
+    }
+  }
+
+
+
+  // Temp block errors
+  return;
 
   let output = {
-    COLOR: ColorCodes.default,
+    COLOR: colorCodes.default,
     TITLE: '',
     USERNAME: '',
     AVATAR_URL: '',
@@ -293,7 +297,7 @@ function processData(type, data) {
     FIELDS: [],
     TIME: new Date(),
     FOOTER: {
-      icon_url: CONFIG.webhook.icon_url,
+      icon_url: '',
       text: CONFIG.webhook.name
     }
   };
@@ -315,7 +319,7 @@ function processData(type, data) {
     switch (type) {
 
       case 'Push Hook':
-        output.COLOR = ColorCodes.commit;
+        output.COLOR = colorCodes.commit;
 
         if (data.commits.length < 1) {
           debugData(JSON.stringify(data));
@@ -385,23 +389,23 @@ function processData(type, data) {
 
 		switch (data.object_attributes.action) {
 			case 'open':
-				output.COLOR = ColorCodes.issue_opened;
+				output.COLOR = colorCodes.issue_opened;
 				action = '✋ Issue:';
 				break;
       case 'reopen':
-        output.COLOR = ColorCodes.issue_opened;
+        output.COLOR = colorCodes.issue_opened;
         action = '↪️ Issue:';
         break;
       case 'update':
-        output.COLOR = ColorCodes.issue_opened;
+        output.COLOR = colorCodes.issue_opened;
         action = '✏ Issue:';
         break;
 			case 'close':
-				output.COLOR = ColorCodes.issue_closed;
+				output.COLOR = colorCodes.issue_closed;
 				action = '✅ Issue:';
 				break;
 			default:
-				output.COLOR = ColorCodes.issue_comment;
+				output.COLOR = colorCodes.issue_comment;
 				console.log('## Unhandled case for Issue Hook ', data.object_attributes.action);
 				break;
 		}
@@ -442,7 +446,7 @@ function processData(type, data) {
 
           case 'commit':
           case 'Commit':
-            output.COLOR = ColorCodes.commit;
+            output.COLOR = colorCodes.commit;
             output.DESCRIPTION = `**New Comment on Commit ${truncate(data.commit.id,StrLen.commit_id,true)}**\n`;
 
             let commit_info = `[${truncate(data.commit.id,StrLen.commit_id,true)}](_blank) `;
@@ -462,7 +466,7 @@ function processData(type, data) {
 
           case 'merge_request':
           case 'MergeRequest':
-            output.COLOR = ColorCodes.merge_request_comment;
+            output.COLOR = colorCodes.merge_request_comment;
 
             let mr_state = (data.merge_request.state) ? `[${data.merge_request.state}]` : '';
             output.DESCRIPTION = DEDENT `
@@ -493,7 +497,7 @@ function processData(type, data) {
 
           case 'issue':
           case 'Issue':
-            output.COLOR = ColorCodes.issue_comment;
+            output.COLOR = colorCodes.issue_comment;
 
             let issue_state = (data.issue.state) ? ` [${data.issue.state}]` : '';
             output.DESCRIPTION = `**New Comment on Issue #${data.issue.iid} ${data.issue.title} ${issue_state}**\n`;
@@ -548,19 +552,19 @@ function processData(type, data) {
         output.PERMALINK = data.object_attributes.url;
         switch (data.object_attributes.state) {
           case 'opened':
-            output.COLOR = ColorCodes.merge_request_opened;
+            output.COLOR = colorCodes.merge_request_opened;
             output.DESCRIPTION = `❌ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
             break;
           case 'merged':
-            output.COLOR = ColorCodes.merge_request_closed;
+            output.COLOR = colorCodes.merge_request_closed;
             output.DESCRIPTION = `↪️ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
             break;
           case 'closed':
-            output.COLOR = ColorCodes.merge_request_closed;
+            output.COLOR = colorCodes.merge_request_closed;
             output.DESCRIPTION = `✅ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
             break;
           default:
-            output.COLOR = ColorCodes.merge_request_comment;
+            output.COLOR = colorCodes.merge_request_comment;
             console.log('## Unhandled case for Merge Request Hook ', data.object_attributes.action);
             break;
         }
@@ -652,16 +656,16 @@ function processData(type, data) {
 
         switch (data.object_attributes.status) {
           case 'failed':
-            output.COLOR = ColorCodes.red;
+            output.COLOR = colorCodes.red;
             status_emote = '❌ ';
             break;
           case 'created':
           case 'success':
-            output.COLOR = ColorCodes.green;
+            output.COLOR = colorCodes.green;
             status_emote = '✅ ';
             break;
           default:
-            output.COLOR = ColorCodes.grey;
+            output.COLOR = colorCodes.grey;
             break;
         }
 
@@ -742,20 +746,20 @@ function processData(type, data) {
         let build_emote = '';
         switch (data.build_status) {
           case 'failed':
-            output.COLOR = ColorCodes.red;
+            output.COLOR = colorCodes.red;
             build_emote = '❌';
             break;
           case 'created':
           case 'success':
-            output.COLOR = ColorCodes.green;
+            output.COLOR = colorCodes.green;
             build_emote = '✅';
             break;
           case 'skipped':
-            output.COLOR = ColorCodes.grey;
+            output.COLOR = colorCodes.grey;
             build_emote = '↪️';
             break;
           default:
-            output.COLOR = ColorCodes.grey;
+            output.COLOR = colorCodes.grey;
             break;
         }
 
@@ -780,7 +784,7 @@ function processData(type, data) {
         break;
 
       case 'Known Error':
-        output.COLOR = ColorCodes.error;
+        output.COLOR = colorCodes.error;
         output.TITLE = 'Error Processing HTTP Request';
         output.DESCRIPTION = data.message;
 
@@ -810,7 +814,7 @@ function processData(type, data) {
     console.log('Error Context: processing data of an HTTP request. Type: ' + type);
     console.error(e);
 
-    output.COLOR = ColorCodes.error;
+    output.COLOR = colorCodes.error;
     output.TITLE = 'Error Reading HTTP Request Data: ' + type;
     output.DESCRIPTION = e.message;
   }
@@ -818,10 +822,8 @@ function processData(type, data) {
   // Send data via webhook
   sendData(output);
 }
-
 function sendData(input) {
-
-  console.log('sending...');
+  print(0, 'Sending result.');
 
   let embed = {
     color: input.COLOR,
@@ -830,8 +832,7 @@ function sendData(input) {
       icon_url: input.AVATAR_URL
     },
     title: input.TITLE,
-    //url: input.PERMALINK,
-    url: '',
+    url: input.PERMALINK,
     description: input.DESCRIPTION,
     fields: input.FIELDS || {},
     timestamp: input.TIME || new Date(),
@@ -851,28 +852,102 @@ function sendData(input) {
     storedData.push(embed);
   }
 }
+print(1, "Initialized listener");
 
 
-// Custom Errors
 
 
 
-/* A function that should use the appropriate decryption scheme for the specified webhook source
- * [Twitter] uses HMAC SHA-256 on a secret+payload, which should be compared to base-64 encoded headers[X-Twitter-Webhooks-Signature]
- * https://dev.twitter.com/webhooks/securing
- * [GitLab] simply sends the user-specified token which should be at least compared in a timing-safe fashion
- * https://gitlab.com/gitlab-org/gitlab-ce/issues/18256
- */
-//function decrypt(headers) {
-// Set up our secure token checking object
-//const HMAC = CRYPTO.createHmac( 'sha256', process.env.GITLAB_TOKEN );
-// Hash the data
-//HMAC.update(headers['X-Gitlab-Token'], 'base64');
-// Verify the hash
-//console.log(hmac.digest('base64'));
-//return CRYPTO.timingSafeEqual(hmac.digest('base64'), b);
-//return false;
-//}
+
+
+
+
+
+/* Utilities */
+
+function truncate(str, count, noElipses, noNewLines) {
+  if (noNewLines) str = str.split('\n').join(' ');
+  if (!count && str) return str;
+  if (count && str && noElipses) {
+    return str.substring(0, count);
+  } else if (str && str.length > 0) {
+    if (str.length <= count) return str;
+    return str.substring(0, count - 3) + '...';
+  } else {
+    return "";
+  }
+}
+function msToTime(s) {
+  var pad = (n, z = 2) => ('00' + n).slice(-z);
+  return pad(s / 3.6e6 | 0) + 'h:' + pad((s % 3.6e6) / 6e4 | 0) + 'm:' + pad((s % 6e4) / 1000 | 0) + '.' + pad(s % 1000, 3) + 's';
+}
+
+function getAvatarURL(str) {
+  if (str == null) return "";
+  if (str.startsWith('/')) return CONFIG.webhook.gitlab_url + str;
+  return str;
+}
+function getIsHostnameAllowed(sUrl, tUrls)
+{
+  if(tUrls.length == 1)
+  {
+    return (tUrls[0] == '*' || tUrls[0].toLowerCase() == sUrl.toLowerCase())
+  }
+
+  for(var i = 0; i < (tUrls.length); i++)
+  {
+    if(tUrls[i] == '*' || tUrls[i].toLowerCase() == sUrl)
+      return true;
+  }
+  return false;
+}
+function getHostnameSplit(tType, tData)
+{
+  let sUrl;
+  // Currently all hooks are equal. Future inequalities might change this
+  switch(tType)
+  {
+    case HookType.PUSH:
+    case HookType.TAG_PUSH:
+    case HookType.ISSUE:
+    case HookType.ISSUE_CONFIDENTIAL:
+    case HookType.NOTE:
+    case HookType.MERGE:
+    case HookType.WIKI:
+    case HookType.PIPELINE:
+    case HookType.BUILD:
+      sUrl = tData.project.web_url;
+      break;
+    default:
+      return;
+  }
+
+  return PATTERN_URLSPLITTER.exec(sUrl);
+}
+function getIsPathAllowed(tData, tPaths)
+{
+  let tSpecifiedPath = tData.project.path_with_namespace.split('/');
+
+  for(let i = 0;i < tPaths.length;i++)
+  {
+    let tPath = tPaths[i].split('/');
+    if(tPath[0] == '*')
+    {
+      return true;
+    }
+    else if(tPath[0] == tSpecifiedPath[0])
+    {
+      if(tPath[1] == '*' || tPath[1] == tSpecifiedPath[1])
+      {
+        return true;
+      }
+    }    
+  }
+  return false;
+}
+
+
+
 
 
 /* ============================================
@@ -929,10 +1004,10 @@ function shareDiscordError(user, context) {
 // In case we cannot send messages, try going through the webhook
 function shareDiscordErrorFromSend(originalError, originalContext, context) {
   return function(e) {
-    console.log('Error Context: ' + context);
+    print(3, 'context: ' + context);
     console.error(e);
     if (HOOK) {
-      HOOK.send(`[${CONFIG.bot.name}] encountered an error...\nInitial Context: ${originalContext}\nInitial Error: ${originalError.message}\nSubsequent Context: ${context}\nSubsequent Error: ${e.message}`)
+      HOOK.send(`[${CONFIG.bot.nickname}] encountered an error...\nInitial Context: ${originalContext}\nInitial Error: ${originalError.message}\nSubsequent Context: ${context}\nSubsequent Error: ${e.message}`)
         .then((m) => console.log(`Sent an error report via webhook`))
         .catch(console.error);
     }
@@ -1127,17 +1202,6 @@ const COMMANDS = {
   }
 };
 
-
-
-
-
-
-
-
-
-
-
-
 print(0, "Initializing Discord client.");
 const CLIENT = new DISCORD.Client();
 var CLIENT_userTimerEnabled = false;
@@ -1170,14 +1234,11 @@ CLIENT.on('ready', () => {
     let numStored = CLIENT_embedsQueue.length;
     let collectedEmbeds = [];
     for (let i = 0; i < numStored; i++) {
-      collectedEmbeds.push(storedData.pop());
+      collectedEmbeds.push(CLIENT_embedsQueue.pop());
     }
-    collectedEmbeds[0].description = `Recovered ${collectedEmbeds.length} requests...`;
-    // Send all the collected Embeds at once
-    // NOTE: There is a chance that a request gets added to collectedEmbeds during this process, and won't be shared until the next time the bot recovers
-    HOOK.send('', { embeds: collectedEmbeds })
-      .then((message) => console.log(`Sent stored embeds`))
-      .catch(shareDiscordError(null, `[onReady] Sending recovered embeds via WebHook: ${HOOK.name}`));
+    // HOOK.send('', { embeds: collectedEmbeds })
+    //   .then((message) => print(1, `Handled queued requests`))
+    //   .catch(shareDiscordError(null, `[onReady] Sending recovered embeds via WebHook: ${HOOK.name}`));
 
   }
 
@@ -1192,11 +1253,14 @@ CLIENT.on('ready', () => {
 
 // Create an event listener for messages
 CLIENT.on('message', msg => {
-  // Ignore messages from DMs, Gropu DMs, and Voice
-  if (msg.channel.type !== 'text') return;
+  // Ignore messages from Group DMs, and Voice.
+  if (msg.channel.type !== 'text' || msg.channel.type !== 'dm') return;
 
   // Only read message if mentioned
   if (msg.mentions.members.get(CONFIG.bot.credentials.id) != null) {
+    let content = msg.content.replace(/<@([A-Z0-9])\w+>/g, '');
+    content = content.trim();
+    console.log(content);
     //console.log(msg);
     // Parse cmd and args
     // let [cmd, ...arg] = msg.content.substring(CONFIG.bot.prefix.length).toLowerCase().split(' ');
@@ -1210,38 +1274,28 @@ CLIENT.on('message', msg => {
 });
 
 CLIENT.on('disconnect', closeEvent => {
-  let d = new Date();
-  console.log(d.toLocaleString());
-
   if (closeEvent) {
-    console.log(CONFIG.bot.nickname + ' went offline with code ' + closeEvent.code + ': ' + closeEvent.reason);
-    console.log('Exiting...');
+    print(2, `${CONFIG.bot.nickname} went offline with code ${closeEvent.code}: ${closeEvent.reason}`);
   } else {
-    console.log(`${CONFIG.bot.name} went offline with unknown code`);
+    print(2, `${CONFIG.bot.nickname} went offline with unknown code`);
   }
 });
 
 CLIENT.on('reconnecting', () => {
-  let d = new Date();
-  console.log(d.toLocaleString());
-  console.log(`${CONFIG.bot.name} is attempting to reconnect`);
+  print(1, `${CONFIG.bot.nickname} is attempting to reconnect`);
 });
 
 CLIENT.on('warn', warn => {
-  let d = new Date();
-  console.log(d.toLocaleString());
   if (warn) {
-    console.log('Warning: ' + warn);
+    print(2, `${CONFIG.bot.nickname} received a warning: ${warn}`);
   }
 });
 
 CLIENT.on('error', error => {
-  let d = new Date();
-  console.log(d.toLocaleString());
   if (error) {
-    console.log('Error: ' + error.message);
+    print(2, `${CONFIG.bot.nickname} has an error: ${error.message}`);
   } else {
-    console.log('Unknown error');
+    print(2, `${CONFIG.bot.nickname} has an unknown error`);
   }
 });
 print(1, "Initialized Discord client.");
