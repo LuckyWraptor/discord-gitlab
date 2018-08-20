@@ -93,7 +93,13 @@ Note that some events will require additional setup on your GitLab instance, suc
 
 ## Bot Commands
 
-Calling the bot is as easy as simply mentioning him with your command.
+Calling the bot is as easy as simply mentioning him with your command, this can be done in a channel readable by the bot, or simply in a private message.
+
+### Binding gitlab to your user
+
+`@botname gitlab-bind <url> <access_token>`
+
+This command may only be send in a private-message to the bot, the user is required to post it's user gitlab-url aswell as an access-token for the specified user on the gitlab platform with 'read_user' access for verification purposes only, after the bind has been completed the user may (and is advised to) delete the token.
 
 ### Disconnect Bot
 
