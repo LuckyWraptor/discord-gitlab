@@ -38,16 +38,29 @@
           "hyperlinks": true
         },
         "events": {
-          "issues": [
-            "* or updated/opened/closed/comment"
+          "issue": [
+            "* or update/open/close"
+          ],
+          "note": [
+              "issue",
+              "merge",
+              "snippet",
+              "commit"
+          ],
+          "merge": [
+            "merged",
+            "opened",
+            "closed"
+          ],
+          "commit":  false,
+          "tag": true,
+          "wiki": true,
+          "build": [
+            "failed",
+            "created",
+            "success",
+            "skipped"
           ]
-        },
-        "templates": {
-          "issues": {
-            "updated": "./templates/issues/updated.txt",
-            "opened": "./templates/issues/opened.txt",
-            "closed": "./templates/issues/closed.txt"
-          }
         }
       }
     }

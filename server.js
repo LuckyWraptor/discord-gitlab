@@ -10,8 +10,8 @@ const DEDENT = require('dedent-js');
 var PATTERN_URLSPLITTER =/(.+:\/\/)?([^\/]+)(\/.*)*/i;
 
 const HookType = {
-  PUSH: "push",
-  TAG_PUSH: "tag_push",
+  COMMIT: "push",
+  TAG_COMMIT: "tag_push",
   ISSUE: "issue",
   ISSUE_CONFIDENTIAL: "confidential_issue",
   NOTE: "note",
@@ -19,7 +19,13 @@ const HookType = {
   WIKI: "wiki_page",
   PIPELINE: "pipeline",
   BUILD: "build",
-}
+};
+const NodeType = {
+  COMMIT: "Commit",
+  MERGE: "MergeRequest",
+  ISSUE: "Issue",
+  SNIPPET: "Snippet"
+};
 const colorCodes = {
   issue_opened: 15426592, // orange
   issue_closed: 5198940, // grey
@@ -91,6 +97,7 @@ function print(iType, sString, bErrorExit)
 /* Webhooks */
 print(0, "Creating Discord webhook clients.");
 var HOOKS = {};
+var HOOKS_embedsQueues = {};
 if(CONFIG.webhooks)
 {
   for(let webhookId in CONFIG.webhooks) {
@@ -248,14 +255,14 @@ function processData(data, tToken) {
     return;
   }
 
-  if(data.event_name == null && data.object_kind == null)
+  let type = data.event_name || data.object_kind;
+  if(type == null)
   {
     print(2, "No (Hook-type) provided in request, discarding");
     return;
   }
-  let enumType = data.event_name || data.object_kind;
 
-  let tDomain = getHostnameSplit(enumType, data);
+  let tDomain = getHostnameSplit(data);
   if(tDomain == null)
   {
     print(2, "No gitlab url specified, discarding.");
@@ -271,60 +278,66 @@ function processData(data, tToken) {
       return;
     }
   }
-  
-  // Allow all if none specified (Default behaviour).
   if(tToken.paths != null)
   {
-    if(!getIsPathAllowed(data, tToken.paths))
+    if(!getIsPathAllowed(data.project.path_with_namespace, tToken.paths))
     {
       print(2, "Project path specified isn't allowed to post using this token.");
       return;
     }
   }
+  if(tToken.events != null)
+  {
+    let bNoConfidential = false;
+    if(tToken.filters != null)
+    {
+      bNoConfidential = (tToken.filters.confidential == true);
+    }
+    if(!getIsEventAllowed(data, tToken.events, bNoConfidential))
+    {
+      print(2, "Project event-specific type specified for the event isn't allowed to post using this token.");
+      return;
+    }
+  }
 
+  if(tToken.webhooks == null || tToken.webhooks.length <= 0)
+  {
+    print(3, "No webhooks specified for token: " + sToken);
+    return;
+  }
 
-
-  // Temp block errors
-  return;
-
-  let output = {
+  /// Generate tOutput
+  let tOutput = {
     COLOR: colorCodes.default,
     TITLE: '',
     USERNAME: '',
     AVATAR_URL: '',
-    PERMALINK: '',
+    URL: '',
     DESCRIPTION: '',
     FIELDS: [],
-    TIME: new Date(),
-    FOOTER: {
-      icon_url: '',
-      text: CONFIG.webhook.name
-    }
+    TIME: new Date()
   };
-
   // Set up common values, if they exist
   if (data.user) {
-    output.USERNAME = truncate(data.user.username) || truncate(data.user.name);
-    output.AVATAR_URL = getAvatarURL(data.user.avatar_url);
+    tOutput.USERNAME = truncate(data.user.username) || truncate(data.user.name);
+    tOutput.AVATAR_URL = getAvatarURL(data.user.avatar_url, (tDomain[1] + tDomain[2]));
   } else {
-    output.USERNAME = truncate(data.user_username) || truncate(data.user_name);
-    output.AVATAR_URL = getAvatarURL(data.user_avatar);
+    tOutput.USERNAME = truncate(data.user_username) || truncate(data.user_name);
+    tOutput.AVATAR_URL = getAvatarURL(data.user_avatar, (tDomain[1] + tDomain[2]));
   }
   if (data.project) {
-    //output.PERMALINK = truncate(data.project.web_url);
-    output.TITLE = `[${data.project.namespace}: ${data.project.name}]`;
+    tOutput.TITLE = `[${data.project.path_with_namespace}]`;
   }
 
   try {
     switch (type) {
-
-      case 'Push Hook':
-        output.COLOR = colorCodes.commit;
+      case HookType.COMMIT:
+        tOutput.COLOR = colorCodes.commit;
 
         if (data.commits.length < 1) {
           debugData(JSON.stringify(data));
         } else if (data.commits.length == 1) {
-          output.DESCRIPTION = DEDENT `
+          tOutput.DESCRIPTION = DEDENT `
           **1 New Commit**\n
           ${data.commits[0].message}\n
           ${data.commits[0].modified.length} change(s)\n
@@ -332,27 +345,26 @@ function processData(data, tToken) {
           ${data.commits[0].removed.length} deletion(s)
           `;
         } else {
-          output.DESCRIPTION = `**${data.total_commits_count} New Commits**\n`;
+          tOutput.DESCRIPTION = `**${data.total_commits_count} New Commits**\n`;
           for (let i = 0; i < Math.min(data.commits.length, 5); i++) {
             let changelog = DEDENT `
             ${data.commits[i].modified.length} change(s)
             ${data.commits[i].added.length} addition(s)
             ${data.commits[i].removed.length} deletion(s)
             `;
-            output.DESCRIPTION += `[${truncate(data.commits[i].id,StrLen.commit_id,true)}](_blank '${changelog}') ${truncate(data.commits[i].message,StrLen.commit_msg)} - ${data.commits[i].author.name}\n`;
+            tOutput.DESCRIPTION += `[${truncate(data.commits[i].id,stringLengths.commit_id,true)}](_blank '${changelog}') ${truncate(data.commits[i].message,stringLengths.commit_msg)} - ${data.commits[i].author.name}\n`;
           }
         }
-        break;
-
-      case 'Tag Push Hook':
-        output.DESCRIPTION = `**Tag ${data.ref.substring('refs/tags/'.length)}**\n`;
-        output.PERMALINK = `${data.project.web_url}/${data.ref}`;
+      break;
+      case HookType.TAG_COMMIT:
+        tOutput.DESCRIPTION = `**Tag ${data.ref.substring('refs/tags/'.length)}**\n`;
+        tOutput.URL = `${data.project.web_url}/${data.ref}`;
 
         // Commit Stuff
         if (data.commits.length < 1) {
           debugData(JSON.stringify(data));
         } else if (data.commits.length == 1) {
-          output.DESCRIPTION += DEDENT `
+          tOutput.DESCRIPTION += DEDENT `
           ${data.commits[0].message}\n
           ${data.commits[0].modified.length} change(s)\n
           ${data.commits[0].added.length} addition(s)\n
@@ -365,99 +377,97 @@ function processData(data, tToken) {
             ${data.commits[i].added.length} addition(s)
             ${data.commits[i].removed.length} deletion(s)
             `;
-            output.DESCRIPTION += `[${truncate(data.commits[i].id,StrLen.commit_id,true)}](_blank '${changelog}') ${truncate(data.commits[i].message,StrLen.commit_msg)} - ${data.commits[i].author.name}\n`;
+            tOutput.DESCRIPTION += `[${truncate(data.commits[i].id,stringLengths.commit_id,true)}](_blank '${changelog}') ${truncate(data.commits[i].message,stringLengths.commit_msg)} - ${data.commits[i].author.name}\n`;
           }
         }
         // Tag Stuff
-        output.FIELDS.push({
+        tOutput.FIELDS.push({
           inline: true,
           name: 'Previous',
-          value: `${truncate(data.before, StrLen.commit_id, true)}`
+          value: `${truncate(data.before, stringLengths.commit_id, true)}`
         });
-        output.FIELDS.push({
+        tOutput.FIELDS.push({
           inline: true,
           name: 'Current',
-          value: `${truncate(data.after, StrLen.commit_id, true)}`
+          value: `${truncate(data.after, stringLengths.commit_id, true)}`
         });
 
-        break;
+      break;
+      case HookType.ISSUE:
+      case HookType.ISSUE_CONFIDENTIAL:
+        tOutput.URL = truncate(data.object_attributes.url);
+        let action = 'Issue';
 
-	  case 'Issue Hook':
-	  case 'Confidential Issue Hook':
-		output.PERMALINK = truncate(data.object_attributes.url);
-		let action = 'Issue';
+        switch (data.object_attributes.action) {
+          case 'open':
+            tOutput.COLOR = colorCodes.issue_opened;
+            action = '✋ Issue:';
+            break;
+          case 'reopen':
+            tOutput.COLOR = colorCodes.issue_opened;
+            action = '↪️ Issue:';
+            break;
+          case 'update':
+            tOutput.COLOR = colorCodes.issue_opened;
+            action = '✏ Issue:';
+            break;
+          case 'close':
+            tOutput.COLOR = colorCodes.issue_closed;
+            action = '✅ Issue:';
+            break;
+          default:
+            tOutput.COLOR = colorCodes.issue_comment;
+            console.log('## Unhandled case for Issue Hook ', data.object_attributes.action);
+            break;
+        }
 
-		switch (data.object_attributes.action) {
-			case 'open':
-				output.COLOR = colorCodes.issue_opened;
-				action = '✋ Issue:';
-				break;
-      case 'reopen':
-        output.COLOR = colorCodes.issue_opened;
-        action = '↪️ Issue:';
-        break;
-      case 'update':
-        output.COLOR = colorCodes.issue_opened;
-        action = '✏ Issue:';
-        break;
-			case 'close':
-				output.COLOR = colorCodes.issue_closed;
-				action = '✅ Issue:';
-				break;
-			default:
-				output.COLOR = colorCodes.issue_comment;
-				console.log('## Unhandled case for Issue Hook ', data.object_attributes.action);
-				break;
-		}
+        if (data.object_attributes.confidential) { // TODO support multiple hooks for private and public updates
+          tOutput.DESCRIPTION += `**${action} [CONFIDENTIAL]**\n`;
+        } else {
+          tOutput.DESCRIPTION += `**${action} #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
+          //output.DESCRIPTION += truncate(data.object_attributes.description, stringLengths.description); // I don't want no description to be shown
 
-		if (data.object_attributes.confidential) { // TODO support multiple hooks for private and public updates
-			output.DESCRIPTION += `**${action} [CONFIDENTIAL]**\n`;
-		} else {
-			output.DESCRIPTION += `**${action} #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
-			//output.DESCRIPTION += truncate(data.object_attributes.description, StrLen.description); // I don't want no description to be shown
+          if (data.assignees && data.assignees.length > 0) {
+          let assignees = { inline: true, name: 'Assigned To:', value: '' };
+          for (let i = 0; i < data.assignees.length; i++) {
+            assignees.value += `${data.assignees[i].username}\n`;
+          }
+          tOutput.FIELDS.push(assignees);
+          }
 
-			if (data.assignees && data.assignees.length > 0) {
-			let assignees = { inline: true, name: 'Assigned To:', value: '' };
-			for (let i = 0; i < data.assignees.length; i++) {
-				assignees.value += `${data.assignees[i].username}\n`;
-			}
-			output.FIELDS.push(assignees);
-			}
+          if (data.labels && data.labels.length > 0) {
+          let labels = { inline: true, name: 'Labeled As:', value: '' };
+          for (let i = 0; i < data.labels.length; i++) {
+            labels.value += `${data.labels[i].title}\n`;
+          }
+          tOutput.FIELDS.push(labels);
+          }
+        }
+      break;
+      case HookType.NOTE:
+        tOutput.URL = data.object_attributes.url;
 
-			if (data.labels && data.labels.length > 0) {
-			let labels = { inline: true, name: 'Labeled As:', value: '' };
-			for (let i = 0; i < data.labels.length; i++) {
-				labels.value += `${data.labels[i].title}\n`;
-			}
-			output.FIELDS.push(labels);
-			}
-		}
-        break;
-
-      case 'Note Hook':
-        output.PERMALINK = data.object_attributes.url;
-
-        output.FIELDS.push({
+        tOutput.FIELDS.push({
           name: 'Comment',
-          value: truncate(data.object_attributes.note, StrLen.field_value)
+          value: truncate(data.object_attributes.note, stringLengths.field_value)
         });
 
         switch (data.object_attributes.noteable_type) {
 
           case 'commit':
           case 'Commit':
-            output.COLOR = colorCodes.commit;
-            output.DESCRIPTION = `**New Comment on Commit ${truncate(data.commit.id,StrLen.commit_id,true)}**\n`;
+            tOutput.COLOR = colorCodes.commit;
+            tOutput.DESCRIPTION = `**New Comment on Commit ${truncate(data.commit.id,stringLengths.commit_id,true)}**\n`;
 
-            let commit_info = `[${truncate(data.commit.id,StrLen.commit_id,true)}](_blank) `;
-            commit_info += `${truncate(data.commit.message,StrLen.commit_msg, false, true)} - ${data.commit.author.name}`;
-            output.FIELDS.push({
+            let commit_info = `[${truncate(data.commit.id,stringLengths.commit_id,true)}](_blank) `;
+            commit_info += `${truncate(data.commit.message,stringLengths.commit_msg, false, true)} - ${data.commit.author.name}`;
+            tOutput.FIELDS.push({
               name: 'Commit',
               value: commit_info
             });
 
             let commit_date = new Date(data.commit.timestamp);
-            output.FIELDS.push({
+            tOutput.FIELDS.push({
               name: 'Commit Timestamp',
               // Given Format: 2014-02-27T10:06:20+02:00
               value: commit_date.toLocaleString('UTC', dateOptions)
@@ -466,28 +476,28 @@ function processData(data, tToken) {
 
           case 'merge_request':
           case 'MergeRequest':
-            output.COLOR = colorCodes.merge_request_comment;
+            tOutput.COLOR = colorCodes.merge_request_comment;
 
             let mr_state = (data.merge_request.state) ? `[${data.merge_request.state}]` : '';
-            output.DESCRIPTION = DEDENT `
+            tOutput.DESCRIPTION = DEDENT `
               **New Comment on Merge Request #${data.merge_request.iid}**
               *Merge Status: ${data.merge_request.merge_status}* ${mr_state}
               ${data.merge_request.title}`;
 
-            let last_commit_info = `[${truncate(data.merge_request.last_commit.id,StrLen.commit_id,true)}](_blank) `;
-            last_commit_info += `${truncate(data.merge_request.last_commit.message,StrLen.commit_msg, false, true)} - ${data.merge_request.last_commit.author.name}`;
-            output.FIELDS.push({
+            let last_commit_info = `[${truncate(data.merge_request.last_commit.id,stringLengths.commit_id,true)}](_blank) `;
+            last_commit_info += `${truncate(data.merge_request.last_commit.message,stringLengths.commit_msg, false, true)} - ${data.merge_request.last_commit.author.name}`;
+            tOutput.FIELDS.push({
               name: 'Latest Commit',
               value: last_commit_info
             });
 
-            output.FIELDS.push({
+            tOutput.FIELDS.push({
               name: 'Assigned To',
               value: truncate(data.merge_request.assignee.username)
             });
 
             let mr_date = new Date(data.merge_request.created_at);
-            output.FIELDS.push({
+            tOutput.FIELDS.push({
               name: 'Merge Request Timestamp',
               // Given Format: 2014-02-27T10:06:20+02:00
               value: mr_date.toLocaleString('UTC', dateOptions)
@@ -497,13 +507,13 @@ function processData(data, tToken) {
 
           case 'issue':
           case 'Issue':
-            output.COLOR = colorCodes.issue_comment;
+            tOutput.COLOR = colorCodes.issue_comment;
 
             let issue_state = (data.issue.state) ? ` [${data.issue.state}]` : '';
-            output.DESCRIPTION = `**New Comment on Issue #${data.issue.iid} ${data.issue.title} ${issue_state}**\n`;
+            tOutput.DESCRIPTION = `**New Comment on Issue #${data.issue.iid} ${data.issue.title} ${issue_state}**\n`;
 
             let issue_date = new Date(data.issue.created_at);
-            output.FIELDS.push({
+            tOutput.FIELDS.push({
               name: 'Issue Timestamp',
               // Given Format: 2014-02-27T10:06:20+02:00
               value: issue_date.toLocaleString('UTC', dateOptions)
@@ -513,28 +523,28 @@ function processData(data, tToken) {
 
           case 'snippet':
           case 'Snippet':
-            output.DESCRIPTION = `**New Comment on Code Snippet**\n`;
+            tOutput.DESCRIPTION = `**New Comment on Code Snippet**\n`;
 
-            output.FIELDS.push({
+            tOutput.FIELDS.push({
               inline: true,
               name: 'Title',
-              value: truncate(data.snippet.title, StrLen.field_value)
+              value: truncate(data.snippet.title, stringLengths.field_value)
             });
 
-            output.FIELDS.push({
+            tOutput.FIELDS.push({
               inline: true,
               name: 'File Name',
-              value: truncate(data.snippet.file_name, StrLen.field_value)
+              value: truncate(data.snippet.file_name, stringLengths.field_value)
             });
 
             let snip_filetype = data.snippet.file_name.substr(data.snippet.file_name.lastIndexOf('.') + 1);
-            output.FIELDS.push({
+            tOutput.FIELDS.push({
               name: 'Code Snippet',
-              value: '```' + snip_filetype + '\n' + truncate(data.snippet.content, StrLen.snippet_code) + '\n```'
+              value: '```' + snip_filetype + '\n' + truncate(data.snippet.content, stringLengths.snippet_code) + '\n```'
             });
 
             let snip_date = new Date(data.snippet.created_at);
-            output.FIELDS.push({
+            tOutput.FIELDS.push({
               name: 'Snippet Timestamp',
               // Given Format: 2014-02-27T10:06:20+02:00
               value: snip_date.toLocaleString('UTC', dateOptions)
@@ -545,36 +555,34 @@ function processData(data, tToken) {
             console.log('## Unhandled case for Note Hook ', data.object_attributes.noteable_type);
             break;
         }
-
-        break;
-
-      case 'Merge Request Hook':
-        output.PERMALINK = data.object_attributes.url;
+      break;
+      case HookType.merge:
+        tOutput.URL = data.object_attributes.url;
         switch (data.object_attributes.state) {
           case 'opened':
-            output.COLOR = colorCodes.merge_request_opened;
-            output.DESCRIPTION = `❌ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
+            tOutput.COLOR = colorCodes.merge_request_opened;
+            tOutput.DESCRIPTION = `❌ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
             break;
           case 'merged':
-            output.COLOR = colorCodes.merge_request_closed;
-            output.DESCRIPTION = `↪️ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
+            tOutput.COLOR = colorCodes.merge_request_closed;
+            tOutput.DESCRIPTION = `↪️ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
             break;
           case 'closed':
-            output.COLOR = colorCodes.merge_request_closed;
-            output.DESCRIPTION = `✅ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
+            tOutput.COLOR = colorCodes.merge_request_closed;
+            tOutput.DESCRIPTION = `✅ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
             break;
           default:
-            output.COLOR = colorCodes.merge_request_comment;
+            tOutput.COLOR = colorCodes.merge_request_comment;
             console.log('## Unhandled case for Merge Request Hook ', data.object_attributes.action);
             break;
         }
 
-        output.DESCRIPTION += DEDENT `
+        tOutput.DESCRIPTION += DEDENT `
           *Merge Status: ${data.object_attributes.merge_status}* [${data.object_attributes.state}]
-          ${truncate(data.object_attributes.description, StrLen.description)}
+          ${truncate(data.object_attributes.description, stringLengths.description)}
           `;
 
-        output.FIELDS.push({
+        tOutput.FIELDS.push({
           inline: true,
           name: 'Merge From',
           value: DEDENT `
@@ -583,7 +591,7 @@ function processData(data, tToken) {
             ${data.object_attributes.source_branch}`
         });
 
-        output.FIELDS.push({
+        tOutput.FIELDS.push({
           inline: true,
           name: 'Merge Into',
           value: DEDENT `
@@ -593,21 +601,21 @@ function processData(data, tToken) {
         });
 
         /*if (data.object_attributes.source) {
-          output.FIELDS.push({
+          tOutput.FIELDS.push({
             name: 'Source:',
             value: `[${data.object_attributes.source.path_with_namespace}: ${data.object_attributes.source_branch}](${data.object_attributes.source.web_url} '${data.object_attributes.source.name}')`
           });
         } 
 
         if (data.object_attributes.target) {
-          output.FIELDS.push({
+          tOutput.FIELDS.push({
             name: 'Target:',
             value: `[${data.object_attributes.target.path_with_namespace}: ${data.object_attributes.target_branch}](${data.object_attributes.target.web_url} '${data.object_attributes.target.name}')`
           });
         }*/
 
         if (data.object_attributes.assignee) {
-          output.FIELDS.push({
+          tOutput.FIELDS.push({
             inline: true,
             name: 'Assigned To',
             value: `${data.object_attributes.assignee.username}`
@@ -619,7 +627,7 @@ function processData(data, tToken) {
           for (let i = 0; i < data.assignees.length; i++) {
             assignees.value += `${data.assignees[i].username}\n`;
           }
-          output.FIELDS.push(assignees);
+          tOutput.FIELDS.push(assignees);
         }
 
         if (data.labels && data.labels.length > 0) {
@@ -627,56 +635,54 @@ function processData(data, tToken) {
           for (let i = 0; i < data.labels.length; i++) {
             labels.value += `${data.labels[i].title}\n`;
           }
-          output.FIELDS.push(labels);
+          tOutput.FIELDS.push(labels);
         }
-        break;
+      break;
+      case HookType.WIKI:
+        tOutput.URL = data.object_attributes.url;
+        tOutput.DESCRIPTION = `**Wiki Action: ${data.object_attributes.action}**\n`;
+        tOutput.DESCRIPTION += truncate(data.object_attributes.message, stringLengths.description);
 
-      case 'Wiki Page Hook':
-        output.PERMALINK = data.object_attributes.url;
-        output.DESCRIPTION = `**Wiki Action: ${data.object_attributes.action}**\n`;
-        output.DESCRIPTION += truncate(data.object_attributes.message, StrLen.description);
-
-        output.FIELDS.push({
+        tOutput.FIELDS.push({
           name: 'Page Title',
           value: data.object_attributes.title
         });
 
         if (data.object_attributes.content) {
-          output.FIELDS.push({
+          tOutput.FIELDS.push({
             name: 'Page Content',
             value: truncate(data.object_attributes.content, 128)
           });
         }
-        break;
-
-      case 'Pipeline Hook':
-        output.DESCRIPTION = `**Pipeline Status Change** [${data.object_attributes.status}]\n`;
+      break;
+      case HookType.PIPELINE:
+        tOutput.DESCRIPTION = `**Pipeline Status Change** [${data.object_attributes.status}]\n`;
 
         let status_emote = '';
 
         switch (data.object_attributes.status) {
           case 'failed':
-            output.COLOR = colorCodes.red;
+            tOutput.COLOR = colorCodes.red;
             status_emote = '❌ ';
             break;
           case 'created':
           case 'success':
-            output.COLOR = colorCodes.green;
+            tOutput.COLOR = colorCodes.green;
             status_emote = '✅ ';
             break;
           default:
-            output.COLOR = colorCodes.grey;
+            tOutput.COLOR = colorCodes.grey;
             break;
         }
 
-        output.FIELDS.push({
+        tOutput.FIELDS.push({
           name: 'Duration',
           value: msToTime(truncate(data.object_attributes.duration * 1000))
         });
 
-        let commit_info = `[${truncate(data.commit.id,StrLen.commit_id,true)}](_blank) `;
-        commit_info += `${truncate(data.commit.message,StrLen.commit_msg, false, true)} - ${data.commit.author.name}`;
-        output.FIELDS.push({
+        let commit_info = `[${truncate(data.commit.id,stringLengths.commit_id,true)}](_blank) `;
+        commit_info += `${truncate(data.commit.message,stringLengths.commit_msg, false, true)} - ${data.commit.author.name}`;
+        tOutput.FIELDS.push({
           name: 'Commit',
           value: commit_info
         });
@@ -705,35 +711,33 @@ function processData(data, tToken) {
               - **Started**: ${dates.start.toLocaleString('UTC',dateOptions)}
               - **Finished**: ${dates.finish.toLocaleString('UTC',dateOptions)}`;
             }
-            output.FIELDS.push({
+            tOutput.FIELDS.push({
               //inline: true,
               name: `${emote} ${truncate(data.builds[i].stage)}: ${truncate(data.builds[i].name)}`,
               value: build_details
             });
           }
         }
-        break;
-
-      case 'Build Hook':
-      case 'Job Hook':
+      break;
+      case HookType.BUILD:
         // For some reason GitLab doesn't send user data to job hooks, so set username/avatar to empty
-        output.USERNAME = '';
-        output.AVATAR_URL = '';
+        tOutput.USERNAME = '';
+        tOutput.AVATAR_URL = '';
         // It also doesn't include the project web_url ??? or the path with namespace ???
         let canon_url = data.repository.git_http_url.slice(0, -'.git'.length);
         let namespace = canon_url.substr(CONFIG.webhook.gitlab_url.length + 1);
 
-        output.DESCRIPTION = `**Job: ${data.build_name}**\n`;
-        output.PERMALINK = `${canon_url}/-/jobs/${data.build_id}`;
+        tOutput.DESCRIPTION = `**Job: ${data.build_name}**\n`;
+        tOutput.URL = `${canon_url}/-/jobs/${data.build_id}`;
 
-        output.FIELDS.push({
+        tOutput.FIELDS.push({
           name: 'Duration',
           value: msToTime(truncate(data.build_duration * 1000))
         });
 
-        let build_commit_info = `[${truncate(data.commit.sha,StrLen.commit_id,true)}](_blank) `;
-        build_commit_info += `${truncate(data.commit.message,StrLen.commit_msg, false, true)} - ${data.commit.author_name}`;
-        output.FIELDS.push({
+        let build_commit_info = `[${truncate(data.commit.sha,stringLengths.commit_id,true)}](_blank) `;
+        build_commit_info += `${truncate(data.commit.message,stringLengths.commit_msg, false, true)} - ${data.commit.author_name}`;
+        tOutput.FIELDS.push({
           name: 'Commit',
           value: build_commit_info
         });
@@ -746,20 +750,20 @@ function processData(data, tToken) {
         let build_emote = '';
         switch (data.build_status) {
           case 'failed':
-            output.COLOR = colorCodes.red;
+            tOutput.COLOR = colorCodes.red;
             build_emote = '❌';
             break;
           case 'created':
           case 'success':
-            output.COLOR = colorCodes.green;
+            tOutput.COLOR = colorCodes.green;
             build_emote = '✅';
             break;
           case 'skipped':
-            output.COLOR = colorCodes.grey;
+            tOutput.COLOR = colorCodes.grey;
             build_emote = '↪️';
             break;
           default:
-            output.COLOR = colorCodes.grey;
+            tOutput.COLOR = colorCodes.grey;
             break;
         }
 
@@ -772,57 +776,74 @@ function processData(data, tToken) {
           - **Started**: ${build_dates.start.toLocaleString('UTC',dateOptions)}
           - **Finished**: ${build_dates.finish.toLocaleString('UTC',dateOptions)}`;
         }
-        output.FIELDS.push({
+        tOutput.FIELDS.push({
           name: `${build_emote} ${truncate(data.build_stage)}: ${truncate(data.build_name)}`,
           value: build_details
         });
-        break;
-
-      case 'Fake Error':
-        console.log('# Invoked a Fake Error response.');
-        output.DESCRIPTION = data.fake.error;
-        break;
-
-      case 'Known Error':
-        output.COLOR = colorCodes.error;
-        output.TITLE = 'Error Processing HTTP Request';
-        output.DESCRIPTION = data.message;
-
-        if (data.body) {
-          output.FIELDS.push({
-            name: 'Received Data',
-            value: truncate(data.body, StrLen.field_value)
-          });
-        }
-
-        break;
-
+      break;
       default:
         // TODO
         console.log('# Unhandled case! ', type);
-        output.TITLE = `Type: ${type}`;
-        output.DESCRIPTION = `This feature is not yet implemented`;
+        tOutput.TITLE = `Type: ${type}`;
+        tOutput.DESCRIPTION = `This feature is not yet implemented`;
 
-        output.FIELDS.push({
+        tOutput.FIELDS.push({
           name: 'Received Data',
-          value: truncate(JSON.stringify(data), StrLen.json)
+          value: truncate(JSON.stringify(data), stringLengths.json)
         });
 
         break;
     }
   } catch (e) {
-    console.log('Error Context: processing data of an HTTP request. Type: ' + type);
+    print(3, 'Context: processing data of an HTTP request. Type: ' + (data.event_name || data.object_kind));
     console.error(e);
 
-    output.COLOR = colorCodes.error;
-    output.TITLE = 'Error Reading HTTP Request Data: ' + type;
-    output.DESCRIPTION = e.message;
+    tOutput.COLOR = colorCodes.error;
+    tOutput.TITLE = 'Reading HTTP Request Data: ' + (data.event_name || data.object_kind);
+    tOutput.DESCRIPTION = e.message;
   }
 
-  // Send data via webhook
-  sendData(output);
+  if(tToken.filters != null && tToken.filters.hyperlinks != null && tToken.filters.hyperlinks)
+  {
+    tOutput.URL = null;
+  }
+  else if(tOutput.URL == null)
+  {
+    tOutput.URL = truncate(data.project.web_url);
+  }
+
+
+
+  /// Send to allowing hooks
+  for(let i=0;i<tToken.webhooks.length;i++)
+  {
+    if(tToken.webhooks[i].length > 0)
+    {
+      if(!HOOKS.hasOwnProperty(tToken.webhooks[i]))
+      {
+        print(3, "Webhook " + tToken.webhooks[i] + " called but non-existant!");
+        continue;
+      }
+
+      let HookConfig = CONFIG.webhooks[tToken.webhooks[i]];
+      let tResult = tOutput;
+      if(HookConfig.filters != null)
+      {
+        if(HookConfig.filters.hyperlinks)
+        {
+          tResult.URL = null;
+        }
+      }
+
+      // Send data via webhook
+      sendData(tResult, tToken.webhooks[i]);
+    }
+  }
+  
+  // Return before legacy code is called.
+  return;
 }
-function sendData(input) {
+function sendData(input, sWebhook) {
   print(0, 'Sending result.');
 
   let embed = {
@@ -832,34 +853,32 @@ function sendData(input) {
       icon_url: input.AVATAR_URL
     },
     title: input.TITLE,
-    url: input.PERMALINK,
     description: input.DESCRIPTION,
     fields: input.FIELDS || {},
     timestamp: input.TIME || new Date(),
-    footer: input.FOOTER || {
-      icon_url: CONFIG.bot.icon_url,
-      text: CONFIG.bot.name
+    footer: {
+      icon_url: CLIENT.user.avatarURL,
+      text: CONFIG.bot.nickname
     }
   };
+  if(input.URL != null && input.URL.length > 10)
+  {
+    embed.url = input.URL;
+  }
 
   // Only send data if client is ready
-  if (CLIENT != null && CLIENT.status == 0 && HOOK != null) {
-
-    HOOK.send('', { embeds: [embed] })
-      .then((message) => console.log(`Sent embed`))
-      .catch(shareDiscordError(null, `[sendData] Sending an embed via WebHook: ${HOOK.name}`));
+  if (CLIENT != null && CLIENT.status == 0 && HOOKS[sWebhook] != null) {
+    HOOKS[sWebhook].send('', { embeds: [embed] })
+      .catch(shareDiscordError(`[sendData] Sending an embed via WebHook: ${CONFIG.webhooks[sWebhook].name}`));
   } else {
-    storedData.push(embed);
+    if(!HOOKS_embedsQueues.hasOwnProperty(sWebhook))
+    {
+      HOOKS_embedsQueues[sWebhook] = {};
+    }
+    HOOKS_embedsQueues[sWebhook].push(embed);
   }
 }
 print(1, "Initialized listener");
-
-
-
-
-
-
-
 
 
 
@@ -882,9 +901,9 @@ function msToTime(s) {
   return pad(s / 3.6e6 | 0) + 'h:' + pad((s % 3.6e6) / 6e4 | 0) + 'm:' + pad((s % 6e4) / 1000 | 0) + '.' + pad(s % 1000, 3) + 's';
 }
 
-function getAvatarURL(str) {
+function getAvatarURL(str, sDomain) {
   if (str == null) return "";
-  if (str.startsWith('/')) return CONFIG.webhook.gitlab_url + str;
+  if (str.startsWith('/')) return sDomain + str;
   return str;
 }
 function getIsHostnameAllowed(sUrl, tUrls)
@@ -901,32 +920,13 @@ function getIsHostnameAllowed(sUrl, tUrls)
   }
   return false;
 }
-function getHostnameSplit(tType, tData)
+function getHostnameSplit(tData)
 {
-  let sUrl;
-  // Currently all hooks are equal. Future inequalities might change this
-  switch(tType)
-  {
-    case HookType.PUSH:
-    case HookType.TAG_PUSH:
-    case HookType.ISSUE:
-    case HookType.ISSUE_CONFIDENTIAL:
-    case HookType.NOTE:
-    case HookType.MERGE:
-    case HookType.WIKI:
-    case HookType.PIPELINE:
-    case HookType.BUILD:
-      sUrl = tData.project.web_url;
-      break;
-    default:
-      return;
-  }
-
-  return PATTERN_URLSPLITTER.exec(sUrl);
+  return PATTERN_URLSPLITTER.exec(tData.project.web_url);
 }
-function getIsPathAllowed(tData, tPaths)
+function getIsPathAllowed(sPath, tPaths)
 {
-  let tSpecifiedPath = tData.project.path_with_namespace.split('/');
+  let tSpecifiedPath = sPath.split('/');
 
   for(let i = 0;i < tPaths.length;i++)
   {
@@ -945,29 +945,93 @@ function getIsPathAllowed(tData, tPaths)
   }
   return false;
 }
-
-
-
+function getIsEventAllowed(tData, tEvents, bNoConfidential)
+{
+  switch(tData.event_name || tData.object_kind)
+  {
+    case HookType.COMMIT:
+        return (tEvents.commit != null && tEvents.commit == true);
+    case HookType.TAG_COMMIT:
+      return (tEvents.tag != null && tEvents.tag == true);
+    case HookType.WIKI:
+      return (tEvents.wiki != null && tEvents.wiki == true);
+    case HookType.ISSUE_CONFIDENTIAL:
+      if(bNoConfidential)
+        return false;
+    case HookType.ISSUE:
+      if(tEvents.issue != null)
+      {
+        if(tData.object_attributes != null && tData.object_attributes.action != null)
+        {
+          for(let i=0;i<tEvents.issue.length;i++)
+          {
+            let sType = tEvents.issue[i];
+            if(sType == '*' || tData.object_attributes.action.toLowerCase() == sType)
+              return true;
+          }
+        }
+      }
+    break;
+    case HookType.NOTE:
+      if(tEvents.note != null)
+      {
+        if(tData.object_attributes != null && tData.object_attributes.state != null)
+        {
+          for(let i=0;i<tEvents.note.length;i++)
+          {
+            if(tEvents.note[i] == '*' || tEvents.note[i].toLowerCase() == tData.object_attributes.state.toLowerCase())
+              return true;
+          }
+        }
+      }
+    break;
+    case HookType.MERGE:
+      if(tEvents.merge != null)
+      {
+        if(tData.object_attributes != null && tData.object_attributes.merge != null)
+        {
+          for(let i=0;i<tEvents.merge.length;i++)
+          {
+            if(tEvents.merge[i] == '*' || tEvents.merge[i].toLowerCase() == tData.object_attributes.noteable_type.toLowerCase())
+              return true;
+          }
+        }
+      }
+    case HookType.PIPELINE:
+    case HookType.BUILD:
+      if(tEvents.build != null)
+      {
+        if(tData.build_status != null && tData.build_status != null)
+        {
+          for(let i=0;i<tEvents.build.length;i++)
+          {
+            if(tEvents.build[i] == '*' || tEvents.build[i].toLowerCase() == tData.build_status.toLowerCase())
+              return true;
+          }
+        }
+      }
+    break;
+  }
+  return false;
+}
 
 
 /* ============================================
  * Bot Commands
  * ========================================= */
 const SAMPLE = {
-  build: { type: 'Build Hook', filename: 'sample/build.json' },
-  issue: { type: 'Issue Hook', filename: 'sample/issue.json' },
-  merge: { type: 'Merge Request Hook', filename: 'sample/merge.json' },
-  merge_request: { type: 'Merge Request Hook', filename: 'sample/merge.json' },
-  commit_comment: { type: 'Note Hook', filename: 'sample/note-commit.json' },
-  issue_comment: { type: 'Note Hook', filename: 'sample/note-issue.json' },
-  merge_comment: { type: 'Note Hook', filename: 'sample/note-merge.json' },
-  snippet: { type: 'Note Hook', filename: 'sample/note-snippet.json' },
-  pipeline: { type: 'Pipeline Hook', filename: 'sample/pipeline.json' },
-  push: { type: 'Push Hook', filename: 'sample/push.json' },
-  tag: { type: 'Tag Push Hook', filename: 'sample/tag.json' },
-  wiki: { type: 'Wiki Page Hook', filename: 'sample/wiki.json' },
-  unrelated: { type: 'Unrelated', filename: 'sample/unrelated.json' },
-  fake_error: { type: 'Fake Error', filename: 'sample/unrelated.json' }
+  build: { type: HookType.BUILD, filename: 'sample/build.json' },
+  issue: { type: HookType.ISSUE, filename: 'sample/issue.json' },
+  merge: { type: HookType.MERGE, filename: 'sample/merge.json' },
+  merge_request: { type: HookType.MERGE, filename: 'sample/merge.json' },
+  commit_comment: { type: HookType.NOTE, filename: 'sample/note-commit.json' },
+  issue_comment: { type: HookType.NOTE, filename: 'sample/note-issue.json' },
+  merge_comment: { type: HookType.NOTE, filename: 'sample/note-merge.json' },
+  snippet: { type: HookType.NOTE, filename: 'sample/note-snippet.json' },
+  pipeline: { type: HookType.PIPELINE, filename: 'sample/pipeline.json' },
+  push: { type: HookType.COMMIT, filename: 'sample/push.json' },
+  tag: { type: HookType.TAG_COMMIT, filename: 'sample/tag.json' },
+  wiki: { type: HookType.WIKI, filename: 'sample/wiki.json' }
 };
 
 // Custom Error Handlers for DiscordAPI
@@ -983,22 +1047,13 @@ function replyWithDiscordError(msg) {
     console.error(e);
   };
 }
-// Mention User and send report to Debug Channel
-function shareDiscordError(user, context) {
-  // Return a function so that we can simply replace console.error with shareDiscordError(user)
-  let channel = CLIENT.channels.get(CONFIG.bot.debug_channel_id);
+// Mention send report to master user
+function shareDiscordError(context) {
   return function(e) {
-    console.log('Error Context: ' + context);
+    print(3, 'Context: ' + context);
     console.error(e);
-    if (user && channel) {
-      channel.send(`${user} encountered an error from DiscordAPI...\nContext: ${context}\nError: ${e.message}`)
-        .then((m) => { console.log(`[Via Debug Channel] Informed ${user} of the API Error ${e.code} during ${context}`) })
-        .catch(shareDiscordErrorFromSend(e, context, `[ERROR] Sending error message to ${user} in ${channel}`));
-    } else if (channel) {
-      channel.send(`Someone encountered an error from DiscordAPI...\nContext: ${context}\nError: ${e.message}`)
-        .then((m) => { console.log(`[Via Debug Channel] Reported an API Error ${e.code} during ${context}`) })
-        .catch(shareDiscordErrorFromSend(e, context, `[ERROR] Sending error message to ${channel}`));
-    }
+    CLIENT.users.get(CONFIG.bot.master_user_id).send(`Someone encountered an error from DiscordAPI...\nContext: ${context}\nError: ${e.message}`)
+      .catch(shareDiscordErrorFromSend(e, context, `[ERROR] Sending error message to <@${CONFIG.bot.master_user_id}>`));
   }
 }
 // In case we cannot send messages, try going through the webhook
@@ -1006,9 +1061,9 @@ function shareDiscordErrorFromSend(originalError, originalContext, context) {
   return function(e) {
     print(3, 'context: ' + context);
     console.error(e);
-    if (HOOK) {
-      HOOK.send(`[${CONFIG.bot.nickname}] encountered an error...\nInitial Context: ${originalContext}\nInitial Error: ${originalError.message}\nSubsequent Context: ${context}\nSubsequent Error: ${e.message}`)
-        .then((m) => console.log(`Sent an error report via webhook`))
+    if (CLIENT) {
+      CLIENT.users.get(CONFIG.bot.master_user_id).send(`[${CONFIG.bot.nickname}] encountered an error...\nInitial Context: ${originalContext}\nInitial Error: ${originalError.message}\nSubsequent Context: ${context}\nSubsequent Error: ${e.message}`)
+        .then((m) => print(3, `Sent an error report via webhook`))
         .catch(console.error);
     }
   }
@@ -1207,8 +1262,6 @@ const CLIENT = new DISCORD.Client();
 var CLIENT_userTimerEnabled = false;
 var CLIENT_disconnectHandled = false;
 var CLIENT_readyStatus = 'ready';
-var CLIENT_embedsQueue = [];
-
 var keepAlive = function() {
   //print(0, '### Routine check client.status: ' + CLIENT.status + '; uptime: ' + CLIENT.uptime + ".");
 
