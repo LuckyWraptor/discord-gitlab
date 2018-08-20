@@ -1271,7 +1271,7 @@ var keepAlive = function() {
 
     // set ready message to 'Recovering from unexpected shutdown'
     CLIENT_readyStatus = 'rebooted';
-    CLIENT.login(CONFIG.bot.credentials.token);
+    CLIENT.login(CONFIG.bot.credentials.token || process.env.DG_BOT_TOKEN);
   }
 };
 var CLIENT_keepAlive = setInterval(keepAlive, 3000);
@@ -1359,5 +1359,5 @@ print(1, "Initialized Discord client.");
  * ========================================= */
 print(0, 'Logging in Discord client...');
 // Log our bot in
-CLIENT.login(CONFIG.bot.credentials.token || process.env.DG_CLIENT_TOKEN);
+CLIENT.login(CONFIG.bot.credentials.token || process.env.DG_BOT_TOKEN);
 print(1, 'Logged in Discord client...');
