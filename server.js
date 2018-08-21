@@ -983,11 +983,11 @@ function getIsEventAllowed(tData, tEvents, bConfidential)
     case HookType.MERGE:
       if(tEvents.merge != null)
       {
-        if(tData.object_attributes != null && tData.object_attributes.merge != null)
+        if(tData.object_attributes != null && tData.object_attributes.state != null)
         {
           for(let i=0;i<tEvents.merge.length;i++)
           {
-            if(tEvents.merge[i] == '*' || tEvents.merge[i].toLowerCase() == tData.object_attributes.merge.toLowerCase())
+            if(tEvents.merge[i] == '*' || tEvents.merge[i].toLowerCase() == tData.object_attributes.state.toLowerCase())
               return true;
           }
         }
