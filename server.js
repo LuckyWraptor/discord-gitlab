@@ -293,7 +293,7 @@ function processData(data, tToken) {
       return;
     }
   }
-  if(tToken.paths != null || tToken.paths.length <= 0)
+  if(tToken.paths != null && tToken.paths.length <= 0)
   {
     if(!getIsPathAllowed(data.project.path_with_namespace, tToken.paths))
     {
@@ -301,7 +301,7 @@ function processData(data, tToken) {
       return;
     }
   }
-  if(tToken.events != null || tToken.events.length <= 0)
+  if(tToken.events != null && tToken.events.length <= 0)
   {
     if(!getIsEventAllowed(data, tToken.events, bConfidentialFiltered))
     {
@@ -309,7 +309,7 @@ function processData(data, tToken) {
       return;
     }
   }
-  if(tToken.webhooks == null || tToken.webhooks.length <= 0)
+  if(tToken.webhooks == null && tToken.webhooks.length <= 0)
   {
     print(3, "No webhooks specified for token: " + sToken);
     return;
