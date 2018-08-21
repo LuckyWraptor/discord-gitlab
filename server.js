@@ -361,7 +361,7 @@ function processData(data, tToken) {
             ${data.commits[i].added.length} addition(s)
             ${data.commits[i].removed.length} deletion(s)
             `;
-            tOutput.DESCRIPTION += `${getTextMarkdownUrlFiltered(truncate(data.commits[i].id, stringLengths.commit_id, true), data.commits[i].url, bHyperlinkFiltered, changelog)} ${truncate(data.commits[i].message,stringLengths.commit_msg, false, true)} - ${data.commits[i].author.name}\n`;
+            tOutput.DESCRIPTION += `${getTextMarkdownUrlFiltered(truncate(data.commits[i].id, stringLengths.commit_id, true), data.commits[i].url, bHyperlinkFiltered, changelog)} ${truncate(data.commits[i].message,stringLengths.commit_msg, false, true)} - ${getUser(tDomain[2], data.commits[i].author.name)}\n`;
           }
         }
       break;
@@ -387,7 +387,7 @@ function processData(data, tToken) {
             ${data.commits[i].added.length} addition(s)
             ${data.commits[i].removed.length} deletion(s)
             `;
-            tOutput.DESCRIPTION += `${getTextMarkdownUrlFiltered(truncate(data.commits[i].id, stringLengths.commit_id, true), data.commits[i].url, bHyperlinkFiltered, changelog)} ${truncate(data.commits[i].message,stringLengths.commit_msg)} - ${data.commits[i].author.name}\n`;
+            tOutput.DESCRIPTION += `${getTextMarkdownUrlFiltered(truncate(data.commits[i].id, stringLengths.commit_id, true), data.commits[i].url, bHyperlinkFiltered, changelog)} ${truncate(data.commits[i].message,stringLengths.commit_msg)} - ${getUser(tDomain[2], data.commits[i].author.name)}\n`;
           }
         }
         // Tag Stuff
