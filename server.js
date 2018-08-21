@@ -348,7 +348,7 @@ function processData(data, tToken) {
           debugData(JSON.stringify(data));
         } else if (data.commits.length == 1) {
           tOutput.DESCRIPTION = DEDENT `
-          ${getTextMarkdownUrlFiltered(truncate(data.commits[0].id, stringLengths.commit_id, true), data.commits[0].url)} ${data.commits[0].message}\n
+          ${getTextMarkdownUrlFiltered(truncate(data.commits[0].id, stringLengths.commit_id, true), data.commits[0].url, bHyperlinkFiltered)} ${data.commits[0].message}\n
           ${data.commits[0].modified.length} change(s)\n
           ${data.commits[0].added.length} addition(s)\n
           ${data.commits[0].removed.length} deletion(s)
