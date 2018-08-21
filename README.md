@@ -1,6 +1,7 @@
 # Discord-GitLab Webhook Bot
 
 A Discord bot for using webhooks with GitLab (and extendable for other custom webhooks not yet built into Discord).
+Unlike it's parent fork this project allows you to integrate multiple gitlabs, multiple access-tokens (not related to the webhook's access-tokens) with specific source restriction, hyperlink, confidentiality and event filtering. To top it all off it now supports multiple webhooks instead of 1 for each bot instance.
 
 ![Preview of embed messages sent via webhook](preview.png "WebHook Embed Preview")
 
@@ -95,12 +96,20 @@ Note that some events will require additional setup on your GitLab instance, suc
 
 Calling the bot is as easy as simply mentioning him with your command, this can be done in a channel readable by the bot, or simply in a private message.
 
-### Binding gitlab to your user
+<!--
+### Binding gitlab user
 
-`@botname gitlab-bind <url> <access_token>`
+`@botname gl_bind <url> <access_token>`
 
 This command may only be send in a private-message to the bot, the user is required to post it's user gitlab-url aswell as an access-token for the specified user on the gitlab platform with 'read_user' access for verification purposes only, after the bind has been completed the user may (and is advised to) delete the token.
 
+### Unbinding gitlab user
+
+`@botname gl_unbind <url>`
+
+This command will remove the gitlab user from your discord account meaning you will not be quoted anymore if you are mentioned in tasks.
+
+-->
 ### Disconnect Bot
 
 `@botname disconnect`

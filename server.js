@@ -263,14 +263,24 @@ function processData(data, tToken) {
   }
 
   let tDomain = getHostnameSplit(data);
+  let sUrl = tDomain[1] + tDomain[2] + "/";
   if(tDomain == null)
   {
     print(2, "No gitlab url specified, discarding.");
     return;
   }
 
+  
+  let bHyperlinkFiltered = false;
+  let bConfidentialFiltered = false;
+  if(tToken.filters != null && tToken.filters.hyperlinks != null)
+  {
+    bHyperlinkFiltered = tToken.filters.hyperlinks === true;
+    bConfidentialFiltered = tToken.filters.hyperlinks === true;
+  }
+
   // Allow all if none specified (Default behaviour).
-  if(tToken.gitlabs != null)
+  if(tToken.gitlabs != null || tToken.gitlabs.length <= 0)
   {
     if(!getIsHostnameAllowed(tDomain[2], tToken.gitlabs))
     {
@@ -278,7 +288,7 @@ function processData(data, tToken) {
       return;
     }
   }
-  if(tToken.paths != null)
+  if(tToken.paths != null || tToken.paths.length <= 0)
   {
     if(!getIsPathAllowed(data.project.path_with_namespace, tToken.paths))
     {
@@ -286,20 +296,14 @@ function processData(data, tToken) {
       return;
     }
   }
-  if(tToken.events != null)
+  if(tToken.events != null || tToken.events.length <= 0)
   {
-    let bNoConfidential = false;
-    if(tToken.filters != null)
-    {
-      bNoConfidential = (tToken.filters.confidential == true);
-    }
-    if(!getIsEventAllowed(data, tToken.events, bNoConfidential))
+    if(!getIsEventAllowed(data, tToken.events, bConfidentialFiltered))
     {
       print(2, "Project event-specific type specified for the event isn't allowed to post using this token.");
       return;
     }
   }
-
   if(tToken.webhooks == null || tToken.webhooks.length <= 0)
   {
     print(3, "No webhooks specified for token: " + sToken);
@@ -317,16 +321,17 @@ function processData(data, tToken) {
     FIELDS: [],
     TIME: new Date()
   };
-  // Set up common values, if they exist
-  if (data.user) {
-    tOutput.USERNAME = truncate(data.user.username) || truncate(data.user.name);
-    tOutput.AVATAR_URL = getAvatarURL(data.user.avatar_url, (tDomain[1] + tDomain[2]));
-  } else {
-    tOutput.USERNAME = truncate(data.user_username) || truncate(data.user_name);
-    tOutput.AVATAR_URL = getAvatarURL(data.user_avatar, (tDomain[1] + tDomain[2]));
-  }
+
   if (data.project) {
     tOutput.TITLE = `[${data.project.path_with_namespace}]`;
+  }
+  // Set up common values, if they exist
+  if (data.user) {
+    tOutput.USERNAME = data.user.username || data.user.name;
+    tOutput.AVATAR_URL = getAvatarURL(data.user.avatar_url, (tDomain[1] + tDomain[2]));
+  } else {
+    tOutput.USERNAME = data.user_username || data.user_name;
+    tOutput.AVATAR_URL = getAvatarURL(data.user_avatar, (tDomain[1] + tDomain[2]));
   }
 
   try {
@@ -338,8 +343,7 @@ function processData(data, tToken) {
           debugData(JSON.stringify(data));
         } else if (data.commits.length == 1) {
           tOutput.DESCRIPTION = DEDENT `
-          **1 New Commit**\n
-          ${data.commits[0].message}\n
+          ${getTextMarkdownUrlFiltered(truncate(data.commits[0].id, stringLengths.commit_id, true), data.commits[0].url)} ${data.commits[0].message}\n
           ${data.commits[0].modified.length} change(s)\n
           ${data.commits[0].added.length} addition(s)\n
           ${data.commits[0].removed.length} deletion(s)
@@ -352,20 +356,21 @@ function processData(data, tToken) {
             ${data.commits[i].added.length} addition(s)
             ${data.commits[i].removed.length} deletion(s)
             `;
-            tOutput.DESCRIPTION += `[${truncate(data.commits[i].id,stringLengths.commit_id,true)}](_blank '${changelog}') ${truncate(data.commits[i].message,stringLengths.commit_msg)} - ${data.commits[i].author.name}\n`;
+            tOutput.DESCRIPTION += `${getTextMarkdownUrlFiltered(truncate(data.commits[i].id, stringLengths.commit_id, true), data.commits[i].url, bHyperlinkFiltered, changelog)} ${truncate(data.commits[i].message,stringLengths.commit_msg, false, true)} - ${data.commits[i].author.name}\n`;
           }
         }
       break;
       case HookType.TAG_COMMIT:
-        tOutput.DESCRIPTION = `**Tag ${data.ref.substring('refs/tags/'.length)}**\n`;
-        tOutput.URL = `${data.project.web_url}/${data.ref}`;
+        tOutput.DESCRIPTION = `**Tag ${data.ref.substring(10)}**\n`; // refs/tags/ = 10 characters long
+        if(!bHyperlinkFiltered)
+          tOutput.URL = `${data.project.web_url}/${data.ref}`;
 
         // Commit Stuff
         if (data.commits.length < 1) {
           debugData(JSON.stringify(data));
         } else if (data.commits.length == 1) {
           tOutput.DESCRIPTION += DEDENT `
-          ${data.commits[0].message}\n
+          ${getTextMarkdownUrlFiltered(truncate(data.commits[0].id, stringLengths.commit_id, true), data.commits[0].url, bHyperlinkFiltered)} ${data.commits[0].message}\n
           ${data.commits[0].modified.length} change(s)\n
           ${data.commits[0].added.length} addition(s)\n
           ${data.commits[0].removed.length} deletion(s)
@@ -377,7 +382,7 @@ function processData(data, tToken) {
             ${data.commits[i].added.length} addition(s)
             ${data.commits[i].removed.length} deletion(s)
             `;
-            tOutput.DESCRIPTION += `[${truncate(data.commits[i].id,stringLengths.commit_id,true)}](_blank '${changelog}') ${truncate(data.commits[i].message,stringLengths.commit_msg)} - ${data.commits[i].author.name}\n`;
+            tOutput.DESCRIPTION += `${getTextMarkdownUrlFiltered(truncate(data.commits[i].id, stringLengths.commit_id, true), data.commits[i].url, bHyperlinkFiltered, changelog)} ${truncate(data.commits[i].message,stringLengths.commit_msg)} - ${data.commits[i].author.name}\n`;
           }
         }
         // Tag Stuff
@@ -395,57 +400,60 @@ function processData(data, tToken) {
       break;
       case HookType.ISSUE:
       case HookType.ISSUE_CONFIDENTIAL:
-        tOutput.URL = truncate(data.object_attributes.url);
-        let action = 'Issue';
+        if(!bHyperlinkFiltered)
+          tOutput.URL = data.object_attributes.url;
 
+        let action = '';
         switch (data.object_attributes.action) {
           case 'open':
             tOutput.COLOR = colorCodes.issue_opened;
-            action = '✋ Issue:';
+            action = '✋ ';
             break;
           case 'reopen':
             tOutput.COLOR = colorCodes.issue_opened;
-            action = '↪️ Issue:';
+            action = '↪️ ';
             break;
           case 'update':
             tOutput.COLOR = colorCodes.issue_opened;
-            action = '✏ Issue:';
+            action = '✏ ';
             break;
           case 'close':
             tOutput.COLOR = colorCodes.issue_closed;
-            action = '✅ Issue:';
+            action = '✅ ';
             break;
           default:
             tOutput.COLOR = colorCodes.issue_comment;
             console.log('## Unhandled case for Issue Hook ', data.object_attributes.action);
             break;
         }
+        action += 'Issue:';
 
-        if (data.object_attributes.confidential) { // TODO support multiple hooks for private and public updates
-          tOutput.DESCRIPTION += `**${action} [CONFIDENTIAL]**\n`;
+        if (bConfidentialFiltered && data.object_attributes.confidential) { // TODO support multiple hooks for private and public updates
+          tOutput.DESCRIPTION = `**${action} [CONFIDENTIAL]**\n`;
         } else {
           tOutput.DESCRIPTION += `**${action} #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
-          //output.DESCRIPTION += truncate(data.object_attributes.description, stringLengths.description); // I don't want no description to be shown
+          tOutput.DESCRIPTION += truncate(data.object_attributes.description, stringLengths.description);
 
           if (data.assignees && data.assignees.length > 0) {
-          let assignees = { inline: true, name: 'Assigned To:', value: '' };
-          for (let i = 0; i < data.assignees.length; i++) {
-            assignees.value += `${data.assignees[i].username}\n`;
-          }
-          tOutput.FIELDS.push(assignees);
+            let assignees = { inline: true, name: 'Assigned To:', value: '' };
+            for (let i=0;i<data.assignees.length;i++) {
+              assignees.value += `${getUser(tDomain[2], data.assignees[i].username)}\n`;
+            }
+            tOutput.FIELDS.push(assignees);
           }
 
           if (data.labels && data.labels.length > 0) {
-          let labels = { inline: true, name: 'Labeled As:', value: '' };
-          for (let i = 0; i < data.labels.length; i++) {
-            labels.value += `${data.labels[i].title}\n`;
-          }
-          tOutput.FIELDS.push(labels);
+            let labels = { inline: true, name: 'Labeled As:', value: '' };
+            for (let i = 0; i < data.labels.length; i++) {
+              labels.value += `${data.labels[i].title}\n`;
+            }
+            tOutput.FIELDS.push(labels);
           }
         }
       break;
       case HookType.NOTE:
-        tOutput.URL = data.object_attributes.url;
+        if(!bHyperlinkFiltered)
+          tOutput.URL = data.object_attributes.url;
 
         tOutput.FIELDS.push({
           name: 'Comment',
@@ -453,14 +461,14 @@ function processData(data, tToken) {
         });
 
         switch (data.object_attributes.noteable_type) {
-
           case 'commit':
           case 'Commit':
+            let commitid = truncate(data.commit.id,stringLengths.commit_id,true);
             tOutput.COLOR = colorCodes.commit;
-            tOutput.DESCRIPTION = `**New Comment on Commit ${truncate(data.commit.id,stringLengths.commit_id,true)}**\n`;
+            tOutput.DESCRIPTION = `**New Comment on Commit ${commitid}**\n`;
 
-            let commit_info = `[${truncate(data.commit.id,stringLengths.commit_id,true)}](_blank) `;
-            commit_info += `${truncate(data.commit.message,stringLengths.commit_msg, false, true)} - ${data.commit.author.name}`;
+            let commit_info = `${getTextMarkdownUrlFiltered(truncate(data.commit.id, stringLengths.commit_id, true), data.commit.url, bHyperlinkFiltered)} `;
+            commit_info += `${truncate(data.commit.message,stringLengths.commit_msg, false, true)} - ${getUser(tDomain[2], data.commit.author.name)}`;
             tOutput.FIELDS.push({
               name: 'Commit',
               value: commit_info
@@ -469,11 +477,9 @@ function processData(data, tToken) {
             let commit_date = new Date(data.commit.timestamp);
             tOutput.FIELDS.push({
               name: 'Commit Timestamp',
-              // Given Format: 2014-02-27T10:06:20+02:00
               value: commit_date.toLocaleString('UTC', dateOptions)
             });
-            break;
-
+          break;
           case 'merge_request':
           case 'MergeRequest':
             tOutput.COLOR = colorCodes.merge_request_comment;
@@ -484,8 +490,8 @@ function processData(data, tToken) {
               *Merge Status: ${data.merge_request.merge_status}* ${mr_state}
               ${data.merge_request.title}`;
 
-            let last_commit_info = `[${truncate(data.merge_request.last_commit.id,stringLengths.commit_id,true)}](_blank) `;
-            last_commit_info += `${truncate(data.merge_request.last_commit.message,stringLengths.commit_msg, false, true)} - ${data.merge_request.last_commit.author.name}`;
+            let last_commit_info = `${getTextMarkdownUrlFiltered(truncate(data.merge_request.last_commit.id, stringLengths.commit_id, true), data.merge_request.last_commit.url, bHyperlinkFiltered)} `;
+            last_commit_info += `${truncate(data.merge_request.last_commit.message,stringLengths.commit_msg, false, true)} - ${getUser(tDomain[2], data.merge_request.last_commit.author.name)}`;
             tOutput.FIELDS.push({
               name: 'Latest Commit',
               value: last_commit_info
@@ -493,18 +499,15 @@ function processData(data, tToken) {
 
             tOutput.FIELDS.push({
               name: 'Assigned To',
-              value: truncate(data.merge_request.assignee.username)
+              value: getUser(tDomain[2], data.merge_request.assignee.username)
             });
 
             let mr_date = new Date(data.merge_request.created_at);
             tOutput.FIELDS.push({
               name: 'Merge Request Timestamp',
-              // Given Format: 2014-02-27T10:06:20+02:00
               value: mr_date.toLocaleString('UTC', dateOptions)
             });
-
-            break;
-
+          break;
           case 'issue':
           case 'Issue':
             tOutput.COLOR = colorCodes.issue_comment;
@@ -515,12 +518,10 @@ function processData(data, tToken) {
             let issue_date = new Date(data.issue.created_at);
             tOutput.FIELDS.push({
               name: 'Issue Timestamp',
-              // Given Format: 2014-02-27T10:06:20+02:00
               value: issue_date.toLocaleString('UTC', dateOptions)
             });
 
-            break;
-
+          break;
           case 'snippet':
           case 'Snippet':
             tOutput.DESCRIPTION = `**New Comment on Code Snippet**\n`;
@@ -546,36 +547,37 @@ function processData(data, tToken) {
             let snip_date = new Date(data.snippet.created_at);
             tOutput.FIELDS.push({
               name: 'Snippet Timestamp',
-              // Given Format: 2014-02-27T10:06:20+02:00
               value: snip_date.toLocaleString('UTC', dateOptions)
             });
-            break;
-
+          break;
           default:
             console.log('## Unhandled case for Note Hook ', data.object_attributes.noteable_type);
             break;
         }
       break;
       case HookType.merge:
-        tOutput.URL = data.object_attributes.url;
-        switch (data.object_attributes.state) {
+        if(!bHyperlinkFiltered)
+          tOutput.URL = data.object_attributes.url;
+        switch (data.object_attributes.state)
+        {
           case 'opened':
             tOutput.COLOR = colorCodes.merge_request_opened;
-            tOutput.DESCRIPTION = `❌ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
-            break;
+            tOutput.DESCRIPTION = `❌`;
+          break;
           case 'merged':
             tOutput.COLOR = colorCodes.merge_request_closed;
-            tOutput.DESCRIPTION = `↪️ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
-            break;
+            tOutput.DESCRIPTION = `↪️`;
+          break;
           case 'closed':
             tOutput.COLOR = colorCodes.merge_request_closed;
-            tOutput.DESCRIPTION = `✅ **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
-            break;
+            tOutput.DESCRIPTION = `✅`;
+          break;
           default:
             tOutput.COLOR = colorCodes.merge_request_comment;
             console.log('## Unhandled case for Merge Request Hook ', data.object_attributes.action);
-            break;
+          break;
         }
+        tOutput.DESCRIPTION += ` **Merge Request: #${data.object_attributes.iid} ${data.object_attributes.title}**\n`;
 
         tOutput.DESCRIPTION += DEDENT `
           *Merge Status: ${data.object_attributes.merge_status}* [${data.object_attributes.state}]
@@ -618,14 +620,14 @@ function processData(data, tToken) {
           tOutput.FIELDS.push({
             inline: true,
             name: 'Assigned To',
-            value: `${data.object_attributes.assignee.username}`
+            value: `${getUser(tDomain[2], data.object_attributes.assignee.username)}`
           });
         }
 
         if (data.assignees && data.assignees.length > 0) {
           let assignees = { inline: true, name: 'Assigned To:', value: '' };
           for (let i = 0; i < data.assignees.length; i++) {
-            assignees.value += `${data.assignees[i].username}\n`;
+            assignees.value += `${getUser(tDomain[2], data.assignees[i].username)}\n`;
           }
           tOutput.FIELDS.push(assignees);
         }
@@ -639,7 +641,8 @@ function processData(data, tToken) {
         }
       break;
       case HookType.WIKI:
-        tOutput.URL = data.object_attributes.url;
+        if(!bHyperlinkFiltered)
+          tOutput.URL = data.object_attributes.url;
         tOutput.DESCRIPTION = `**Wiki Action: ${data.object_attributes.action}**\n`;
         tOutput.DESCRIPTION += truncate(data.object_attributes.message, stringLengths.description);
 
@@ -658,21 +661,22 @@ function processData(data, tToken) {
       case HookType.PIPELINE:
         tOutput.DESCRIPTION = `**Pipeline Status Change** [${data.object_attributes.status}]\n`;
 
-        let status_emote = '';
-
+        let status_emote = '❌';
         switch (data.object_attributes.status) {
           case 'failed':
             tOutput.COLOR = colorCodes.red;
-            status_emote = '❌ ';
-            break;
+          break;
           case 'created':
+            tOutput.COLOR = colorCodes.issue_opened;
+            status_emote = '✋';
+          break;
           case 'success':
             tOutput.COLOR = colorCodes.green;
-            status_emote = '✅ ';
-            break;
+            status_emote = '✅';
+          break;
           default:
             tOutput.COLOR = colorCodes.grey;
-            break;
+          break;
         }
 
         tOutput.FIELDS.push({
@@ -680,37 +684,36 @@ function processData(data, tToken) {
           value: msToTime(truncate(data.object_attributes.duration * 1000))
         });
 
-        let commit_info = `[${truncate(data.commit.id,stringLengths.commit_id,true)}](_blank) `;
-        commit_info += `${truncate(data.commit.message,stringLengths.commit_msg, false, true)} - ${data.commit.author.name}`;
+        let commit_info = `${status_emote} ${getTextMarkdownUrlFiltered(truncate(data.commit.id,stringLengths.commit_id,true), data.commit.url, bHyperlinkFiltered)} `;
+        commit_info += `${truncate(data.commit.message,stringLengths.commit_msg, false, true)} - ${getUser(data.commit.author.name)}`;
         tOutput.FIELDS.push({
           name: 'Commit',
           value: commit_info
         });
 
         if (data.builds && data.builds.length > 0) {
-          for (let i = 0; i < data.builds.length; i++) {
+          for (let i=0;i<data.builds.length;i++) {
             let dates = {
               create: new Date(data.builds[i].created_at),
               start: new Date(data.builds[i].started_at),
               finish: new Date(data.builds[i].finished_at)
             };
-            let emote = '';
-            if (data.builds[i].status == 'failed') emote = '❌';
-            if (data.builds[i].status == 'skipped') emote = '↪️';
-            if (data.builds[i].status == 'success' || data.builds[i].status == 'created') emote = '✅';
 
-            let build_link = `${data.builds[i].id}`;
-
+            let build_link = `${getTextMarkdownUrlFiltered(truncate(data.builds[i].id), tOutput.URL, bHyperlinkFiltered)}`;
             let build_details = `*Skipped Build ID ${build_link}*`;
-
             if (data.builds[i].status != 'skipped') {
               build_details = DEDENT `
               - **Build ID**: ${build_link}
-              - **User**: [${data.builds[i].user.username}](_blank)
+              - **User**: [${getUser(data.builds[i].user.username)}](_blank)
               - **Created**: ${dates.create.toLocaleString('UTC',dateOptions)}
               - **Started**: ${dates.start.toLocaleString('UTC',dateOptions)}
               - **Finished**: ${dates.finish.toLocaleString('UTC',dateOptions)}`;
             }
+
+            let emote = '';
+            if (data.builds[i].status == 'failed') emote = '❌';
+            if (data.builds[i].status == 'skipped') emote = '↪️';
+            if (data.builds[i].status == 'success' || data.builds[i].status == 'created') emote = '✅';
             tOutput.FIELDS.push({
               //inline: true,
               name: `${emote} ${truncate(data.builds[i].stage)}: ${truncate(data.builds[i].name)}`,
@@ -719,68 +722,68 @@ function processData(data, tToken) {
           }
         }
       break;
-      case HookType.BUILD:
-        // For some reason GitLab doesn't send user data to job hooks, so set username/avatar to empty
-        tOutput.USERNAME = '';
-        tOutput.AVATAR_URL = '';
-        // It also doesn't include the project web_url ??? or the path with namespace ???
-        let canon_url = data.repository.git_http_url.slice(0, -'.git'.length);
-        let namespace = canon_url.substr(CONFIG.webhook.gitlab_url.length + 1);
+      // case HookType.BUILD:
+      //   // For some reason GitLab doesn't send user data to job hooks, so set username/avatar to empty
+      //   tOutput.USERNAME = '';
+      //   tOutput.AVATAR_URL = '';
+      //   // It also doesn't include the project web_url ??? or the path with namespace ???
+      //   let canon_url = data.repository.git_http_url.slice(0, -'.git'.length);
+      //   let namespace = canon_url.substr(sUrl.length + 1);
 
-        tOutput.DESCRIPTION = `**Job: ${data.build_name}**\n`;
-        tOutput.URL = `${canon_url}/-/jobs/${data.build_id}`;
+      //   tOutput.DESCRIPTION = `**Job: ${data.build_name}**\n`;
+      //   tOutput.URL = `${canon_url}/-/jobs/${data.build_id}`;
 
-        tOutput.FIELDS.push({
-          name: 'Duration',
-          value: msToTime(truncate(data.build_duration * 1000))
-        });
+      //   tOutput.FIELDS.push({
+      //     name: 'Duration',
+      //     value: msToTime(truncate(data.build_duration * 1000))
+      //   });
 
-        let build_commit_info = `[${truncate(data.commit.sha,stringLengths.commit_id,true)}](_blank) `;
-        build_commit_info += `${truncate(data.commit.message,stringLengths.commit_msg, false, true)} - ${data.commit.author_name}`;
-        tOutput.FIELDS.push({
-          name: 'Commit',
-          value: build_commit_info
-        });
+      //   let build_commit_info = `[${truncate(data.commit.sha,stringLengths.commit_id,true)}](_blank) `;
+      //   build_commit_info += `${truncate(data.commit.message,stringLengths.commit_msg, false, true)} - ${data.commit.author_name}`;
+      //   tOutput.FIELDS.push({
+      //     name: 'Commit',
+      //     value: build_commit_info
+      //   });
 
-        let build_dates = {
-          start: new Date(data.build_started_at),
-          finish: new Date(data.build_finished_at)
-        };
+      //   let build_dates = {
+      //     start: new Date(data.build_started_at),
+      //     finish: new Date(data.build_finished_at)
+      //   };
 
-        let build_emote = '';
-        switch (data.build_status) {
-          case 'failed':
-            tOutput.COLOR = colorCodes.red;
-            build_emote = '❌';
-            break;
-          case 'created':
-          case 'success':
-            tOutput.COLOR = colorCodes.green;
-            build_emote = '✅';
-            break;
-          case 'skipped':
-            tOutput.COLOR = colorCodes.grey;
-            build_emote = '↪️';
-            break;
-          default:
-            tOutput.COLOR = colorCodes.grey;
-            break;
-        }
+      //   let build_emote = '';
+      //   switch (data.build_status) {
+      //     case 'failed':
+      //       tOutput.COLOR = colorCodes.red;
+      //       build_emote = '❌';
+      //       break;
+      //     case 'created':
+      //     case 'success':
+      //       tOutput.COLOR = colorCodes.green;
+      //       build_emote = '✅';
+      //       break;
+      //     case 'skipped':
+      //       tOutput.COLOR = colorCodes.grey;
+      //       build_emote = '↪️';
+      //       break;
+      //     default:
+      //       tOutput.COLOR = colorCodes.grey;
+      //       break;
+      //   }
 
-        let build_link = `[${data.build_id}](_blank)`;
-        let build_details = `*Skipped Build ID ${build_link}*`;
-        if (data.build_status != 'skipped') {
-          build_details = DEDENT `
-          - **Build ID**: ${build_link}
-          - **Commit Author**: [${data.commit.author_name}](_blank)
-          - **Started**: ${build_dates.start.toLocaleString('UTC',dateOptions)}
-          - **Finished**: ${build_dates.finish.toLocaleString('UTC',dateOptions)}`;
-        }
-        tOutput.FIELDS.push({
-          name: `${build_emote} ${truncate(data.build_stage)}: ${truncate(data.build_name)}`,
-          value: build_details
-        });
-      break;
+      //   let build_link = `[${data.build_id}](_blank)`;
+      //   let build_details = `*Skipped Build ID ${build_link}*`;
+      //   if (data.build_status != 'skipped') {
+      //     build_details = DEDENT `
+      //     - **Build ID**: ${build_link}
+      //     - **Commit Author**: [${data.commit.author_name}](_blank)
+      //     - **Started**: ${build_dates.start.toLocaleString('UTC',dateOptions)}
+      //     - **Finished**: ${build_dates.finish.toLocaleString('UTC',dateOptions)}`;
+      //   }
+      //   tOutput.FIELDS.push({
+      //     name: `${build_emote} ${truncate(data.build_stage)}: ${truncate(data.build_name)}`,
+      //     value: build_details
+      //   });
+      // break;
       default:
         // TODO
         console.log('# Unhandled case! ', type);
@@ -803,16 +806,14 @@ function processData(data, tToken) {
     tOutput.DESCRIPTION = e.message;
   }
 
-  if(tToken.filters != null && tToken.filters.hyperlinks != null && tToken.filters.hyperlinks)
+  if(bHyperlinkFiltered)
   {
-    tOutput.URL = null;
+    tOutput.URL = '#';
   }
-  else if(tOutput.URL == null)
+  else if(tOutput.URL == null || tOutput.URL.length < 12)
   {
-    tOutput.URL = truncate(data.project.web_url);
+    tOutput.URL = data.project.web_url;
   }
-
-
 
   /// Send to allowing hooks
   for(let i=0;i<tToken.webhooks.length;i++)
@@ -824,19 +825,8 @@ function processData(data, tToken) {
         print(3, "Webhook " + tToken.webhooks[i] + " called but non-existant!");
         continue;
       }
-
-      let HookConfig = CONFIG.webhooks[tToken.webhooks[i]];
-      let tResult = tOutput;
-      if(HookConfig.filters != null)
-      {
-        if(HookConfig.filters.hyperlinks)
-        {
-          tResult.URL = null;
-        }
-      }
-
       // Send data via webhook
-      sendData(tResult, tToken.webhooks[i]);
+      sendData(tOutput, tToken.webhooks[i]);
     }
   }
   
@@ -873,7 +863,7 @@ function sendData(input, sWebhook) {
   } else {
     if(!HOOKS_embedsQueues.hasOwnProperty(sWebhook))
     {
-      HOOKS_embedsQueues[sWebhook] = {};
+      HOOKS_embedsQueues[sWebhook] = [];
     }
     HOOKS_embedsQueues[sWebhook].push(embed);
   }
@@ -945,7 +935,7 @@ function getIsPathAllowed(sPath, tPaths)
   }
   return false;
 }
-function getIsEventAllowed(tData, tEvents, bNoConfidential)
+function getIsEventAllowed(tData, tEvents, bConfidential)
 {
   switch(tData.event_name || tData.object_kind)
   {
@@ -956,7 +946,7 @@ function getIsEventAllowed(tData, tEvents, bNoConfidential)
     case HookType.WIKI:
       return (tEvents.wiki != null && tEvents.wiki == true);
     case HookType.ISSUE_CONFIDENTIAL:
-      if(bNoConfidential)
+      if(!bConfidential)
         return false;
     case HookType.ISSUE:
       if(tEvents.issue != null)
@@ -966,7 +956,7 @@ function getIsEventAllowed(tData, tEvents, bNoConfidential)
           for(let i=0;i<tEvents.issue.length;i++)
           {
             let sType = tEvents.issue[i];
-            if(sType == '*' || tData.object_attributes.action.toLowerCase() == sType)
+            if(sType == '*' || tData.object_attributes.action.toLowerCase() == sType.toLowerCase())
               return true;
           }
         }
@@ -975,11 +965,11 @@ function getIsEventAllowed(tData, tEvents, bNoConfidential)
     case HookType.NOTE:
       if(tEvents.note != null)
       {
-        if(tData.object_attributes != null && tData.object_attributes.state != null)
+        if(tData.object_attributes != null && tData.object_attributes.noteable_type != null)
         {
           for(let i=0;i<tEvents.note.length;i++)
           {
-            if(tEvents.note[i] == '*' || tEvents.note[i].toLowerCase() == tData.object_attributes.state.toLowerCase())
+            if(tEvents.note[i] == '*' || tEvents.note[i].toLowerCase() == tData.object_attributes.noteable_type.toLowerCase())
               return true;
           }
         }
@@ -992,7 +982,7 @@ function getIsEventAllowed(tData, tEvents, bNoConfidential)
         {
           for(let i=0;i<tEvents.merge.length;i++)
           {
-            if(tEvents.merge[i] == '*' || tEvents.merge[i].toLowerCase() == tData.object_attributes.noteable_type.toLowerCase())
+            if(tEvents.merge[i] == '*' || tEvents.merge[i].toLowerCase() == tData.object_attributes.merge.toLowerCase())
               return true;
           }
         }
@@ -1001,11 +991,11 @@ function getIsEventAllowed(tData, tEvents, bNoConfidential)
     case HookType.BUILD:
       if(tEvents.build != null)
       {
-        if(tData.build_status != null && tData.build_status != null)
+        if(tData.object_attributes != null && tData.object_attributes.detailed_satus != null)
         {
           for(let i=0;i<tEvents.build.length;i++)
           {
-            if(tEvents.build[i] == '*' || tEvents.build[i].toLowerCase() == tData.build_status.toLowerCase())
+            if(tEvents.build[i] == '*' || tEvents.build[i].toLowerCase() == tData.object_attributes.detailed_satus.toLowerCase())
               return true;
           }
         }
@@ -1014,7 +1004,22 @@ function getIsEventAllowed(tData, tEvents, bNoConfidential)
   }
   return false;
 }
+function getTextMarkdownUrlFiltered(sText, sUrl, bFiltered, sHoverText)
+{
+  return `[${sText}](${(bFiltered ? '#' : sUrl)} ` + (sHoverText != null && sHoverText.length > 0 ? "'" + sHoverText + "'" : '') + ')';
+}
+function getUser(sUrl, sUser)
+{
+  if(sUrl == null || sUser == null)
+    return;
 
+  sUrl = sUrl+"/"+sUser;
+  if(MEMBERS.hasOwnProperty(sUrl))
+  {
+    return `<@${MEMBERS[sUrl]}>`;
+  }
+  return sUser;
+}
 
 /* ============================================
  * Bot Commands
@@ -1071,98 +1076,16 @@ function shareDiscordErrorFromSend(originalError, originalContext, context) {
 
 
 const COMMANDS = {
+  gl_bind: function(msg, arg) {
 
-  status: function(msg, arg) {
-    HOOK.send('', { embeds: [getStatusEmbed('status')] })
-      .then((message) => console.log(`Sent status embed`))
-      .catch(shareDiscordError(null, `[STATUS] Sending status embed [status] via WebHook: ${HOOK.name}`));
   },
-
-  debug: function(msg, arg) {
-    if (msg.author.id == CONFIG.bot.master_user_id) {
-      let setting = (arg[0]) ? arg[0] : null;
-      if (setting == null || setting.toLowerCase() == 'true') {
-        IS_DEBUG_MODE = true;
-        msg.reply(`Debug Mode Is ON`)
-          .then((m) => { console.log(`Informed ${msg.author} that debug mode is on`) })
-          .catch(shareDiscordError(msg.author, `[DEBUG:${setting}] Sending a reply [Debug Mode Is ON] to ${msg.author} in ${msg.channel}`));
-      } else if (setting.toLowerCase() == 'false') {
-        IS_DEBUG_MODE = false;
-        msg.reply(`Debug Mode Is OFF`)
-          .then((m) => { console.log(`Informed ${msg.author} that debug mode is off`) })
-          .catch(shareDiscordError(msg.author, `[DEBUG:${setting}] Sending a reply [Debug Mode Is OFF] to ${msg.author} in ${msg.channel}`))
-      } else {
-        msg.reply(`Not a valid argument. Please specify true or false to turn debug mode on or off.`)
-          .then((m) => { console.log(`Informed ${msg.author} that debug argument was invalid`) })
-          .catch(shareDiscordError(msg.author, `[DEBUG:${setting}] Sending a reply [Argument Must Be True or False] to ${msg.author} in ${msg.channel}`));
-      }
-    }
-  },
-
-  clear: function(msg, arg) {
-    // Get the number of messages (first arg)
-    let num = (arg[0]) ? parseInt(arg[0]) : 0;
-    if (isNaN(num) || num < 2 || num > 100) {
-      // Inform the user that this number is invalid
-      msg.reply(`You must specify a number between 2 and 100, inclusive.`)
-        .then((m) => { console.log(`Informed ${msg.author} that the num messages to delete was invalid`) })
-        .catch(shareDiscordError(msg.author, `[CLEAR:${num}] Sending a reply [Argument Must Be >= 2 AND <= 100] to ${msg.author} in ${msg.channel}`));
-      // End
-      return;
-    }
-
-    // Get the channel mentioned if it was mentioned, otherwise set to current channel
-    let channel = (msg.mentions.channels.size > 0) ? msg.mentions.channels.first() : msg.channel;
-    if (channel.type !== 'text') {
-      // Inform the user that this channel is invalid
-      msg.reply(`You must specify a text channel.`)
-        .then((m) => { console.log(`Informed ${msg.author} that the channel ${channel} was an invalid type ${channel.type}`) })
-        .catch(shareDiscordError(msg.author, `[CLEAR:${channel}] Sending a reply [Please Specify a TextChannel] to ${msg.author} in ${msg.channel}`));
-      // End
-      return;
-    }
-
-    //console.log(channel.messages.size); // Only retrieves number of messages in cache (since bot started)
-
-    // TODO: Find a better way of pre-checking number of messages available, maybe recursively?
-    /*let total = null;
-    channel.fetchMessages() // Limited to 50 at a time, so do this 4 times to get 200
-      .then( (collection) => { 
-        total = collection.size; 
-      } )
-      .catch( shareDiscordError(msg.author, `[CLEAR] Fetching messages in channel ${channel}`) );    
-    // Set the number of messages to no more than the size of the channel's message collection
-    num = Math.min(num, total);
-    if (num < 2) {
-      // Inform the user that there are not enough messages in the channel to bulk delete
-      msg.reply(`The channel ${channel} only has ${total} messages. Needs at least 3 messages for bulk delete to work.`)
-        .then( (m) => {console.log(`Informed ${msg.author} that the channel ${channel} had too few messages`)} )
-        .catch( shareDiscordError(msg.author, `[CLEAR:${num},${channel}] Sending a reply [Message Count Mismatch] to ${msg.author} in ${msg.channel}`) );
-      // End
-      return;
-    }*/
-
-    // Check if author is allowed to manage messages (8192 or 0x2000) in specified channel
-    if (channel.permissionsFor(msg.author).has(8192)) {
-      // Bulk Delete, auto-ignoring messages older than 2 weeks
-      channel.bulkDelete(num, true)
-        .then((collection) => {
-          msg.reply(`Successfully deleted ${collection.size} recent messages (from within the past 2 weeks) in ${channel}`)
-            .then((m) => console.log(`Confirmed success of bulk delete in channel ${channel}`))
-            .catch(shareDiscordError(msg.author, `[CLEAR:${num},${channel}] Sending a reply [Success] to ${msg.author} in ${msg.channel}`))
-        })
-        .catch(shareDiscordError(msg.author, `[CLEAR:${num},${channel}] Using bulkDelete(${num}, filterOld=true) in ${channel}`));
-
-    } else {
-      // Inform the user that they are not permitted
-      msg.reply(`Sorry, but you are not permitted to manage messages in ${channel}`)
-        .then((m) => { console.log(`Informed ${msg.author} that they do not have permission to manage messages in ${channel}`) })
-        .catch(shareDiscordError(msg.author, `[CLEAR:${num},${channel}] Sending a reply [User Not Permitted] to ${msg.author} in ${msg.channel}`));
-    }
-  },
-
   embed: function(msg, arg) {
-    let key = (arg[0]) ? arg[0] : '';
+    let key = (arg[1]) ? arg[1] : '';
+    if(!arg[0] || !HOOKS.hasOwnProperty(arg[0]))
+    {
+      msg.reply("Specified hook not found!")
+        .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
+    }
 
     if (key != '' && SAMPLE.hasOwnProperty(key)) {
       FS.readFile(SAMPLE[key].filename, 'utf8', function(err, data) {
@@ -1172,13 +1095,13 @@ const COMMANDS = {
           msg.reply(`There was a problem loading the sample data: ${key}`)
             .catch(shareDiscordError(msg.author, `[EMBED:${key}] Sending a reply [Error Reading File] to ${msg.author} in ${msg.channel}`));
         } else {
-          msg.reply(`Sending a sample embed: ${arg}`)
+          msg.reply(`Sending a sample embed: ${key}`)
             .catch(shareDiscordError(msg.author, `[EMBED:${key}] Sending a reply [Success] to ${msg.author} in ${msg.channel}`));
           processData(SAMPLE[key].type, JSON.parse(data));
         }
       });
     } else {
-      msg.reply(`Not a recognized argument`)
+      msg.reply(`Not a sample argument`)
         .catch(shareDiscordError(msg.author, `[EMBED:null] Sending a reply [Invalid Argument] to ${msg.author} in ${msg.channel}`));
     }
   },
@@ -1199,23 +1122,24 @@ const COMMANDS = {
         .then(() => {
           setTimeout(() => {
             userTimerEnabled = false;
-            console.log('finished user-specified timeout');
+            print(1, 'Finished user-specified timeout');
           }, time);
         })
         .catch(shareDiscordError(msg.author, `[DISCONNECT] Destroying the client session`));
-
     } else {
       msg.reply(`You're not allowed to disconnect the bot!`)
         .catch(shareDiscordError(msg.author, `[DISCONNECT] Sending a reply [Not Permitted] to ${msg.author} in ${msg.channel}`));
     }
   },
 
-  ping: function(msg, arg) {
-    msg.channel.send('pong')
-      .catch(shareDiscordError(msg.author, `[PING] Sending a message to ${msg.channel}`));
-  },
-
   test: function(msg, arg) {
+    if(!arg[0] || !HOOKS.hasOwnProperty(arg[0]))
+    {
+      msg.reply("Couldn't find the provided webhook.")
+        .catch(shareDiscordError(msg.author, `[TEST] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
+      return;
+    }
+
     msg.reply('Sending a sample embed')
       .catch(shareDiscordError(msg.author, `[TEST] Sending a reply to ${msg.author} in ${msg.channel}`));
 
@@ -1248,12 +1172,8 @@ const COMMANDS = {
       }
     };
 
-    if(IS_DEBUG_MODE)
-    {
-      HOOK.send('', { embeds: [embed] })
-        .then((message) => console.log(`Sent test embed`))
-        .catch(shareDiscordError(msg.author, `[TEST] Sending a message via WebHook ${HOOK.name}`));
-    }
+    HOOKS[arg[0]].send('', { embeds: [embed] })
+      .catch(shareDiscordError(msg.author, `[TEST] Sending a message via WebHook ${HOOKS[arg[0]].name}`));
   }
 };
 
@@ -1284,15 +1204,15 @@ CLIENT.on('ready', () => {
     CLIENT_disconnectHandled = false;
 
     // Process stored data
-    let numStored = CLIENT_embedsQueue.length;
-    let collectedEmbeds = [];
-    for (let i = 0; i < numStored; i++) {
-      collectedEmbeds.push(CLIENT_embedsQueue.pop());
-    }
-    // HOOK.send('', { embeds: collectedEmbeds })
-    //   .then((message) => print(1, `Handled queued requests`))
-    //   .catch(shareDiscordError(null, `[onReady] Sending recovered embeds via WebHook: ${HOOK.name}`));
+    for(var sHook in HOOKS_embedsQueues)
+    {
+      if(!HOOKS.hasOwnProperty(sHook))
+        continue;
 
+      HOOKS[sHook].send('', { embeds: HOOKS_embedsQueues[sHook]})
+        .then(() => print(1, `Handled queued requests`))
+        .catch(shareDiscordError(null, `[onReady] Sending recovered embeds via WebHook: ${CONFIG.webhooks[sHook].name}`));
+    }
   }
 
   if (!HTTPListener.listening) {
@@ -1306,32 +1226,20 @@ CLIENT.on('ready', () => {
 
 // Create an event listener for messages
 CLIENT.on('message', msg => {
-  // Ignore messages from Group DMs, and Voice.
-  if (msg.channel.type !== 'text' || msg.channel.type !== 'dm') return;
-
-  // Only read message if mentioned
-  if (msg.mentions.members.get(CONFIG.bot.credentials.id) != null) {
+  if(msg.channel.type == 'dm' || (msg.channel.type == 'text' && msg.mentions.members.get(CONFIG.bot.credentials.id) != null))
+  {
     let content = msg.content.replace(/<@([A-Z0-9])\w+>/g, '');
-    content = content.trim();
-    console.log(content);
-    //console.log(msg);
-    // Parse cmd and args
-    // let [cmd, ...arg] = msg.content.substring(CONFIG.bot.prefix.length).toLowerCase().split(' ');
+    let [cmd, ...arg] = content.trim().split(' ');
 
-    // // Only process command if it is recognized
-    // if (COMMANDS.hasOwnProperty(cmd)) {
-    //   COMMANDS[cmd](msg, arg);
-    // }
-
+    // Only process command if it is recognized
+    if (COMMANDS.hasOwnProperty(cmd)) {
+      COMMANDS[cmd](msg, arg);
+    }
   }
 });
 
 CLIENT.on('disconnect', closeEvent => {
-  if (closeEvent) {
-    print(2, `${CONFIG.bot.nickname} went offline with code ${closeEvent.code}: ${closeEvent.reason}`);
-  } else {
-    print(2, `${CONFIG.bot.nickname} went offline with unknown code`);
-  }
+  print(2, `${CONFIG.bot.nickname} went offline with ${(closeEvent != null ? `code ${closeEvent.code}: ${closeEvent.reason}` : "unknown code")}`);
 });
 
 CLIENT.on('reconnecting', () => {
