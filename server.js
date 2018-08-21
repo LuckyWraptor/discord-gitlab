@@ -1018,7 +1018,7 @@ function getUser(sUrl, sUser)
   if(sUrl == null || sUser == null)
     return;
 
-  sUrl = sUrl+"/"+sUser;
+  sUrl = (sUrl+"/"+sUser).toLowerCase();
   if(MEMBERS.hasOwnProperty(sUrl))
   {
     return `<@${MEMBERS[sUrl]}>`;
