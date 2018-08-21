@@ -1233,7 +1233,7 @@ CLIENT.on('ready', () => {
 CLIENT.on('message', msg => {
   if(msg.channel.type == 'dm' || (msg.channel.type == 'text' && msg.mentions.members.get(CONFIG.bot.credentials.id) != null))
   {
-    let content = msg.content.replace(/<@([A-Z0-9])\w+>/g, '');
+    let content = msg.content.replace(/<@([A-Z0-9])\w+>/g, '').replace(/<@!([A-Z0-9])\w+>/g, '');
     let [cmd, ...arg] = content.trim().split(' ');
 
     // Only process command if it is recognized
