@@ -273,10 +273,15 @@ function processData(data, tToken) {
   
   let bHyperlinkFiltered = false;
   let bConfidentialFiltered = false;
+  if(CONFIG.filters)
+  {
+    bHyperlinkFiltered = CONFIG.filters.hyperlinks || false;
+    bConfidentialFiltered = CONFIG.filters.confidential || false;
+  }
   if(tToken.filters != null && tToken.filters.hyperlinks != null)
   {
     bHyperlinkFiltered = tToken.filters.hyperlinks === true;
-    bConfidentialFiltered = tToken.filters.hyperlinks === true;
+    bConfidentialFiltered = tToken.filters.confidential === true;
   }
 
   // Allow all if none specified (Default behaviour).
