@@ -1186,7 +1186,6 @@ print(0, "Initializing Discord client.");
 const CLIENT = new DISCORD.Client();
 var CLIENT_userTimerEnabled = false;
 var CLIENT_disconnectHandled = false;
-var CLIENT_readyStatus = 'ready';
 var keepAlive = function() {
   //print(0, '### Routine check client.status: ' + CLIENT.status + '; uptime: ' + CLIENT.uptime + ".");
 
@@ -1195,7 +1194,6 @@ var keepAlive = function() {
       CLIENT_disconnectHandled = true;
 
     // set ready message to 'Recovering from unexpected shutdown'
-    CLIENT_readyStatus = 'rebooted';
     CLIENT.login(CONFIG.bot.credentials.token || process.env.DG_BOT_TOKEN);
   }
 };
@@ -1227,6 +1225,7 @@ CLIENT.on('ready', () => {
       () => { console.log('[Info] HTTP Listening at', HTTPListener.address()); }
     );
   }
+  CLIENT.user.setActivity('gitlab', { type: 'LISTENING'});
 });
 
 // Create an event listener for messages
