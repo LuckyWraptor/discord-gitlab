@@ -85,7 +85,7 @@ const logTypes = [
 function print(iType, sString, bErrorExit)
 {
   if(iType > 0 || (CONFIG.application != null && CONFIG.application.debug)) {
-    console.log("[" + logTypes[iType] + "] " + sString);
+    console.log(new Date().toLocaleString('UTC', {hour12:false,hour:'numeric', minute:'numeric'}) + ": [" + logTypes[iType] + "] " + sString);
   }
 
   if(bErrorExit)
@@ -1222,7 +1222,13 @@ CLIENT.on('ready', () => {
     // Start listening for HTTP requests
     HTTPListener.listen(
       {port: CONFIG.listener.port, host: CONFIG.listener.address, exclusive: true},
-      () => { console.log('[Info] HTTP Listening at', HTTPListener.address()); }
+      () => {
+        print(1, `HTTP Listening at: ${(HTTPListener.address().family == 'IPv6') ? `[${HTTPListener.address().address}]` : HTTPListener.address().address}:${HTTPListener.address().port} ${HTTPListener.address().family}`);
+        if(CONFIG.listener.force_host_match)
+        {
+          print(1, `Host match enforcement enabled, requests to host(name) '${CONFIG.listener.force_host_match}' only are allowed.`);
+        }
+      }
     );
   }
   CLIENT.user.setActivity('gitlab', { type: 'LISTENING'});
