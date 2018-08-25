@@ -92,6 +92,16 @@ function print(iType, sString, bErrorExit)
     process.exit(1);
 }
 
+function exitHandler() {
+  HTTPListener.close();
+  CLIENT.destroy();
+  process.exit();
+}
+
+// Close handling
+process.on('exit', exitHandler);
+process.on('SIGINT', exitHandler);
+process.on('uncaughtException', exitHandler);
 
 
 /* Webhooks */
