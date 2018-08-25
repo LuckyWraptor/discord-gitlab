@@ -1084,6 +1084,51 @@ const COMMANDS = {
   gl_bind: function(msg, arg) {
 
   },
+  gl_unbind: function(msg, arg) {
+    if(arg.length < 1) {
+      msg.reply("Please provide the gitlab profile url to remove, or use '*' to remove all binds to your account.")
+        .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
+      return;
+    }
+
+    // Strip protocol types.
+      let url = arg[0].toLowerCase();
+      if(url.startsWith("http://") || url.startsWith("https://"))
+      {
+        try {
+          url = new URL(url);
+          url = url.hostname + url.pathname;
+        }
+        catch
+        {
+          msg.reply("The url specified is invalid.")
+            .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
+          return;
+        }
+      }
+
+      if(MEMBERS.hasOwnProperty(url))
+      {
+        if(MEMBERS[url] == msg.author.id)
+        {
+          delete MEMBERS[url];
+          FS.writeFile('./require/member-binds.json', JSON.stringify(MEMBERS), (err) => {
+            if(err)
+            {
+              print(3, "Error occured when saving member binds:");
+              console.error(err);
+            }
+            print(0, "Member binds have been saved to disk.");
+          });
+          msg.reply("The link has been unbound.")
+            .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
+          return;
+        }
+      }
+
+      msg.reply("Sorry, that link isn't bound to you.")
+        .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
+  },
   embed: function(msg, arg) {
     let key = (arg[1]) ? arg[1] : '';
     if(!arg[0] || !HOOKS.hasOwnProperty(arg[0]))
@@ -1110,7 +1155,6 @@ const COMMANDS = {
         .catch(shareDiscordError(msg.author, `[EMBED:null] Sending a reply [Invalid Argument] to ${msg.author} in ${msg.channel}`));
     }
   },
-
   disconnect: function(msg, arg) {
     let time = (arg[0]) ? parseInt(arg[0]) : 5000;
     time = (isNaN(time)) ? 5000 : time;
@@ -1136,7 +1180,6 @@ const COMMANDS = {
         .catch(shareDiscordError(msg.author, `[DISCONNECT] Sending a reply [Not Permitted] to ${msg.author} in ${msg.channel}`));
     }
   },
-
   test: function(msg, arg) {
     if(!arg[0] || !HOOKS.hasOwnProperty(arg[0]))
     {
@@ -1231,7 +1274,7 @@ CLIENT.on('ready', () => {
       }
     );
   }
-  CLIENT.user.setActivity('gitlab', { type: 'LISTENING'});
+  CLIENT.user.setActivity('gitlab calls', { type: 'LISTENING'});
 });
 
 // Create an event listener for messages
@@ -1241,6 +1284,7 @@ CLIENT.on('message', msg => {
     let content = msg.content.replace(/<@([A-Z0-9])\w+>/g, '').replace(/<@!([A-Z0-9])\w+>/g, '');
     let [cmd, ...arg] = content.trim().split(' ');
 
+    cmd = cmd.toLowerCase();
     // Only process command if it is recognized
     if (COMMANDS.hasOwnProperty(cmd)) {
       COMMANDS[cmd](msg, arg);
