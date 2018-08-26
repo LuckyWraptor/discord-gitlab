@@ -1,5 +1,6 @@
-/* General */
-console.log("'Gitlab -> Discord' bot\r\nVersion 1.0.0\r\nForked by: Wraptor\r\nOriginal creator: FlyingKatsu Discord Bots");
+
+const VERSION = "1.0.0";
+console.log(`'Gitlab -> Discord' bot\r\nVersion ${VERSION}\r\nForked by: Wraptor\r\nOriginal creator: FlyingKatsu Discord Bots`);
 
 const FS = require('fs');
 const CRYPTO = require('crypto');
@@ -7,6 +8,7 @@ const HTTP = require('http');
 const HTTPS = require('https');
 const DISCORD = require('discord.js');
 const DEDENT = require('dedent-js');
+const SEMVER = require('semver');
 
 var PATTERN_URLSPLITTER =/(.+:\/\/)?([^\/]+)(\/.*)*/i;
 

@@ -21,6 +21,7 @@
     "discord.js": "^11.2.1",
     "erlpack": "github:hammerandchisel/erlpack#master",
     "pm2": "^2.4.5",
-    "randomstring": "^1.1.5"
+    "randomstring": "^1.1.5",
+    "semver": "^5.5.1"
   }
 }
