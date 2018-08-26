@@ -4,6 +4,7 @@ console.log("'Gitlab -> Discord' bot\r\nVersion 1.0.0\r\nForked by: Wraptor\r\nO
 const FS = require('fs');
 const CRYPTO = require('crypto');
 const HTTP = require('http');
+const HTTPS = require('https');
 const DISCORD = require('discord.js');
 const DEDENT = require('dedent-js');
 
@@ -1035,6 +1036,22 @@ function getUser(sUrl, sUser)
   }
   return sUser;
 }
+function saveMembers()
+{
+  FS.writeFile('./require/member-binds.json', JSON.stringify(MEMBERS), (err) => {
+    if(err)
+    {
+      print(3, "Error occured when saving member binds:");
+      console.error(err);
+    }
+    print(0, "Member binds have been saved to disk.");
+  });
+}
+function messageReply(msg, sReply)
+{
+  msg.reply(sReply)
+    .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}(${msg.channel.type})`));
+}
 
 /* ============================================
  * Bot Commands
@@ -1092,52 +1109,145 @@ function shareDiscordErrorFromSend(originalError, originalContext, context) {
 
 const COMMANDS = {
   gl_bind: function(msg, arg) {
+    if(msg.channel.type !== 'dm') {
+      messageReply(msg, "I'm sorry but I don't handle binds outside of private messages.");
+      return;
+    }
+    if(arg.length < 2) {
+      messageReply(msg, "Please use the following syntax: gl_bind <url> <access_token>");
+      return;
+    }
+    let url;
+    try {
+      url = new URL(arg[0]);
+    }
+    catch
+    {
+      messageReply(msg, "The url specified is invalid.");
+      return;
+    }
 
+    let sUrl = url.hostname + url.pathname;
+    if(MEMBERS.hasOwnProperty(sUrl))
+    {
+      messageReply(msg, `That gitlab account already is bound to ${(MEMBERS[sUrl] == msg.author.id) ? 'you' : 'someone'}.`);
+      return;
+    }
+
+    let httpClient;
+    if(url.protocol == 'https')
+    {
+      httpClient = HTTP;
+    } else {
+      httpClient = HTTPS;
+    }
+
+    try
+    {
+      httpClient.get({hostname: url.hostname, path: '/api/v4/user', headers:{'PRIVATE-TOKEN':arg[1]} }, (res) => {
+        switch(res.statusCode)
+        {
+          case 200:
+            if(!/^application\/json/.test(res.headers['content-type']))
+            {
+              messageReply(msg, "Couldn't verify your access, invalid gitlab response.");
+              break;
+            }
+
+            res.setEncoding('utf8');
+            let sData = '';
+            res.on('data', (chunk) => { sData += chunk; });
+            res.on('end', () => {
+              let jsonResult;
+              try {
+                jsonResult = JSON.parse(sData);
+              } catch (e) {
+                print(3, `Couldn't json-parse the received data for ${msg.author}'s bind.`);
+                console.error(e.message);
+                messageReply(msg, "Something wents wrong when parsing the received request.");
+                return;
+              }
+
+              if(jsonResult.web_url == null)
+              {
+                print(3, `${msg.author}'s gitlab response when binding didn't contain a profile url`);
+                messageReply(msg, "No profile url provided by gitlab, binding failed.");
+                return;
+              }
+              if(jsonResult.web_url != arg[0]) {
+                print(3, `${msg.author}'s gitlab response when binding didn't contain a profile url`);
+                messageReply(msg, "Verification failed, is the link correct?");
+                return;
+              }
+
+              let url;
+              try 
+              {
+                url = new URL(jsonResult.web_url);
+              } catch(e) {
+                print(3, `${msg.author}'s gitlab response profile url is invalid`);
+                messageReply(msg, "Verification failed, the gitlab-returned profile url is invalid");
+              }
+
+              MEMBERS[  url.hostname + url.pathname  ] = msg.author.id;
+              saveMembers();
+              messageReply(msg, "Success, gitlab has been bound!\r\nPlease make sure to distrust the token on gitlab.");
+            });
+            break;
+          case 401:
+            print(2, `${msg.author} attempted gitlab bind using an invalid token.`);
+            messageReply(msg, "Token invalid, please try again");
+            break;
+          default:
+            print(2, `${msg.author} attempted gitlab bind but received an unhandled error (${res.statusCode}: ${res.statusMessage})`);
+            messageReply(msg, "An unknown/unhandled error occured.");
+            break;
+        }
+        res.resume();
+      }).on('error', (e) => {
+        print(3, `An error occured when verifying ${msg.author}'s bind.`);
+        console.error(e.message);
+        messageReply(msg, "Something wents wrong when sending a verification request.");
+      });
+    } catch(e) {
+      print(3, `A HTTP request to '${url.origin}/api/v4/user' resulted in the error:`);
+      console.error(e);
+      messageReply(msg, "An error occured, please contact my master if the issue persists.");
+    }
   },
   gl_unbind: function(msg, arg) {
     if(arg.length < 1) {
-      msg.reply("Please provide the gitlab profile url to remove, or use '*' to remove all binds to your account.")
-        .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
+      messageReply(msg, "Please provide the gitlab profile url to remove, or use '*' to remove all binds to your account.");
       return;
     }
 
     // Strip protocol types.
-      let url = arg[0].toLowerCase();
-      if(url.startsWith("http://") || url.startsWith("https://"))
-      {
-        try {
-          url = new URL(url);
-          url = url.hostname + url.pathname;
-        }
-        catch
-        {
-          msg.reply("The url specified is invalid.")
-            .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
-          return;
-        }
+    let url = arg[0];
+    if(url.startsWith("http://") || url.startsWith("https://"))
+    {
+      try {
+        url = new URL(url);
+        url = url.hostname + url.pathname;
       }
-
-      if(MEMBERS.hasOwnProperty(url))
+      catch
       {
-        if(MEMBERS[url] == msg.author.id)
-        {
-          delete MEMBERS[url];
-          FS.writeFile('./require/member-binds.json', JSON.stringify(MEMBERS), (err) => {
-            if(err)
-            {
-              print(3, "Error occured when saving member binds:");
-              console.error(err);
-            }
-            print(0, "Member binds have been saved to disk.");
-          });
-          msg.reply("The link has been unbound.")
-            .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
-          return;
-        }
+        messageReply(msg, "The url specified is invalid.");
+        return;
       }
+    }
 
-      msg.reply("Sorry, that link isn't bound to you.")
-        .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
+    if(MEMBERS.hasOwnProperty(url))
+    {
+      if(MEMBERS[url] == msg.author.id)
+      {
+        delete MEMBERS[url];
+        saveMembers();
+        messageReply(msg, "The link has been unbound.");
+        return;
+      }
+    }
+
+    messageReply(msg, "Sorry, that link isn't bound to you.");
   },
   embed: function(msg, arg) {
     let key = (arg[1]) ? arg[1] : '';
