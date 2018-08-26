@@ -100,7 +100,6 @@ Note that some events will require additional setup on your GitLab instance, suc
 
 Calling the bot is as easy as simply mentioning him with your command, this can be done in a channel readable by the bot, or simply in a private message.
 
-<!--
 ### Binding gitlab user
 
 `@botname gl_bind <url> <access_token>`
@@ -113,7 +112,6 @@ This command may only be send in a private-message to the bot, the user is requi
 
 This command will remove the gitlab user from your discord account meaning you will not be quoted anymore if you are mentioned in tasks.
 
--->
 ### Disconnect Bot
 
 `@botname disconnect`
