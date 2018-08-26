@@ -1208,8 +1208,33 @@ const COMMANDS = {
       return;
     }
 
-    // Strip protocol types.
     let url = arg[0];
+
+    if(url == '*')
+    {
+      let arrRemoved = [];
+      for (var k in MEMBERS) {
+        if(MEMBERS.hasOwnProperty(k) && MEMBERS[k] == msg.author.id)
+        {
+          arrRemoved.push(k);
+          delete MEMBERS[k];
+        }
+      }
+
+      if(arrRemoved.length > 0)
+      {
+        saveMembers();
+        messageReply(msg, `Removed \r\n * ${arrRemoved.join("\r\n * ")} \r\n from your binds.`);
+      }
+      else
+      {
+        messageReply(msg, "You currently have no binds to your discord account.");
+      }
+      delete arrRemoved;
+      return;
+    }
+
+    // Strip protocol types.
     if(url.startsWith("http://") || url.startsWith("https://"))
     {
       try {
@@ -1234,6 +1259,7 @@ const COMMANDS = {
       }
     }
 
+    delete url;
     messageReply(msg, "Sorry, that link isn't bound to you.");
   },
   embed: function(msg, arg) {
