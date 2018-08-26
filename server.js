@@ -1071,19 +1071,6 @@ const SAMPLE = {
   wiki: { type: HookType.WIKI, filename: 'sample/wiki.json' }
 };
 
-// Custom Error Handlers for DiscordAPI
-// Reply to the message with an error report
-function replyWithDiscordError(msg) {
-  // Return a function so that we can simply replace console.error with replyWithDiscordError(msg)
-  return function(e) {
-    if (msg) {
-      msg.reply(`encountered an error from DiscordAPI: ${e.message}`)
-        .then((m) => { console.log(`Informed ${msg.author} of the API error: ${e.message}`) })
-        .catch(console.error);
-    }
-    console.error(e);
-  };
-}
 // Mention send report to master user
 function shareDiscordError(context) {
   return function(e) {
@@ -1253,26 +1240,22 @@ const COMMANDS = {
     let key = (arg[1]) ? arg[1] : '';
     if(!arg[0] || !HOOKS.hasOwnProperty(arg[0]))
     {
-      msg.reply("Specified hook not found!")
-        .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
+      messageReply(msg, "Specified hook not found!");
     }
 
     if (key != '' && SAMPLE.hasOwnProperty(key)) {
       FS.readFile(SAMPLE[key].filename, 'utf8', function(err, data) {
         if (err) {
-          console.log('Error Context: Reading a file ' + key);
+          print(3, 'Error Context: Reading a file ' + key);
           console.error(err);
-          msg.reply(`There was a problem loading the sample data: ${key}`)
-            .catch(shareDiscordError(msg.author, `[EMBED:${key}] Sending a reply [Error Reading File] to ${msg.author} in ${msg.channel}`));
+          messageReply(msg, `There was a problem loading the sample data: ${key}`);
         } else {
-          msg.reply(`Sending a sample embed: ${key}`)
-            .catch(shareDiscordError(msg.author, `[EMBED:${key}] Sending a reply [Success] to ${msg.author} in ${msg.channel}`));
+          messageReply(msg, `Sending a sample embed: ${key}`);
           processData(SAMPLE[key].type, JSON.parse(data));
         }
       });
     } else {
-      msg.reply(`Not a sample argument`)
-        .catch(shareDiscordError(msg.author, `[EMBED:null] Sending a reply [Invalid Argument] to ${msg.author} in ${msg.channel}`));
+      messageReply(msg, `Not a sample argument`);
     }
   },
   disconnect: function(msg, arg) {
@@ -1284,8 +1267,7 @@ const COMMANDS = {
     if (msg.author.id == CONFIG.bot.master_user_id) {
       userTimerEnabled = true;
 
-      msg.reply(`Taking bot offline for ${time} ms.  Any commands will be ignored until after that time, but the server will still attempt to listen for HTTP requests.`)
-        .catch(shareDiscordError(msg.author, `[DISCONNECT:${time}] Sending a reply [Success] to ${msg.author} in ${msg.channel}`));
+      messageReply(msg, `Taking bot offline for ${time} ms.  Any commands will be ignored until after that time, but the server will still attempt to listen for HTTP requests.`);
 
       CLIENT.destroy()
         .then(() => {
@@ -1303,13 +1285,11 @@ const COMMANDS = {
   test: function(msg, arg) {
     if(!arg[0] || !HOOKS.hasOwnProperty(arg[0]))
     {
-      msg.reply("Couldn't find the provided webhook.")
-        .catch(shareDiscordError(msg.author, `[TEST] Couldn't send a reply to ${msg.author} in ${msg.channel}`));
+      messageReply(msg, "Couldn't find the provided webhook.");
       return;
     }
 
-    msg.reply('Sending a sample embed')
-      .catch(shareDiscordError(msg.author, `[TEST] Sending a reply to ${msg.author} in ${msg.channel}`));
+    messageReply(msg, 'Sending a sample embed');
 
     let embed = {
       color: 3447003,
