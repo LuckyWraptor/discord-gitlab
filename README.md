@@ -70,6 +70,10 @@ The **package.json** file includes the following dependencies:
 7. Run the bot using `pm2 start server.js --name dg-bot` or simply `node server.js` if you don't want to use pm2
 8. Test the webhook by clicking the 'Test' button in GitLab's integrations page
 
+### Update notifier
+
+Notify the master-user about new releases, to enable add the key 'application.updates': 'true'
+
 ### Debug mode
 
 Debug mode can be configured in the config file under the application key (application.debug)

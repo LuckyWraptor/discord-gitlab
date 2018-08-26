@@ -1,6 +1,7 @@
 {
   "application": {
-      "debug": false
+    "updates": true, 
+    "debug": false
   },
   "bot": {
     "nickname": "James",
