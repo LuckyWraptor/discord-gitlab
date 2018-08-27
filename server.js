@@ -1122,7 +1122,7 @@ const COMMANDS = {
     try {
       url = new URL(arg[0]);
     }
-    catch
+    catch(e)
     {
       messageReply(msg, "The url specified is invalid.");
       return;
