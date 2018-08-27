@@ -1255,7 +1255,7 @@ const COMMANDS = {
         url = new URL(url);
         url = url.hostname + url.pathname;
       }
-      catch
+      catch(e)
       {
         messageReply(msg, "The url specified is invalid.");
         return;
