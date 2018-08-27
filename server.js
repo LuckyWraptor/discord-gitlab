@@ -11,6 +11,7 @@ const DEDENT = require('dedent-js');
 const SEMVER = require('semver');
 
 var PATTERN_URLSPLITTER =/(.+:\/\/)?([^\/]+)(\/.*)*/i;
+var PATTERN_USER = /@(\w+)/g;
 
 const HookType = {
   COMMIT: "push",
@@ -1053,6 +1054,17 @@ function messageReply(msg, sReply)
 {
   msg.reply(sReply)
     .catch(shareDiscordError(msg.author, `[EMBED] Couldn't send a reply to ${msg.author} in ${msg.channel}(${msg.channel.type})`));
+}
+function convertMarkdownToDiscord(sUrl, sInput) {
+  let sOutput = sInput.replace(PATTERN_USER, function(sMatch, sUsername) {
+    let sUser = getUser(sUrl, sUsername);
+    if(sUser && sUser != sUsername)
+      return sUser;
+    else
+      return sMatch;
+  });
+
+  return sOutput
 }
 
 /* ============================================
