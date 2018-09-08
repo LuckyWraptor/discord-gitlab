@@ -71,7 +71,6 @@ class Processor {
                 return;
             }
         }
-
         let tOutput = this.processGitlab(data, tDomain, bHyperlinkFiltered, bConfidentialFiltered);
         /// Send to allowing hooks
         for (let i = 0; i < tToken.webhooks.length; i++) {
@@ -104,13 +103,13 @@ class Processor {
         }
         // Set up common values, if they exist
         if (data.user) {
-            tOutput.USERNAME = data.user.username || data.user.name;
+            tOutput.USERNAME =  data.user.name || data.user.username;
             tOutput.AVATAR_URL = data.user.avatar_url;
         } else {
-            tOutput.USERNAME = data.user_username || data.user_name;
+            tOutput.USERNAME =  data.user_name || data.user_username;
             tOutput.AVATAR_URL = data.user_avatar;
         }
-        //Util.GetAvatarURL(tOutput.AVATAR_URL, (tDomain[1] +tDomain[2]));
+        tOutput.AVATAR_URL = Util.GetAvatarURL(tOutput.AVATAR_URL, (tDomain[1] +tDomain[2]));
 
         try {
             switch (data.event_name || data.object_kind) {
@@ -275,10 +274,11 @@ class Processor {
                                 value: last_commit_info
                             });
 
-                            tOutput.FIELDS.push({
-                                name: 'Assigned To',
-                                value: Markdown.GetUserString(tDomain[2], data.merge_request.assignee.username)
-                            });
+                            // console.log(data);
+                            // tOutput.FIELDS.push({
+                            //     name: 'Assigned To',
+                            //     value: Markdown.GetUserString(tDomain[2], data.merge_request.assignee.username)
+                            // });
 
                             let mr_date = new Date(data.merge_request.created_at);
                             tOutput.FIELDS.push({
@@ -364,8 +364,8 @@ class Processor {
                         inline: true,
                         name: 'Merge From',
                         value: DEDENT `
-                            ${data.object_attributes.source.namespace}/
-                            ${data.object_attributes.source.name}:
+                            ${data.object_attributes.source.namespace}
+                            ${data.object_attributes.source.name}
                             ${data.object_attributes.source_branch}`
                     });
 
@@ -373,8 +373,8 @@ class Processor {
                         inline: true,
                         name: 'Merge Into',
                         value: DEDENT `
-                            ${data.object_attributes.target.namespace}/
-                            ${data.object_attributes.target.name}:
+                            ${data.object_attributes.target.namespace}
+                            ${data.object_attributes.target.name}
                             ${data.object_attributes.target_branch}`
                     });
 
