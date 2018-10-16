@@ -207,6 +207,10 @@ const COMMANDS = {
         delete url;
     },
     embed: function (msg, arg) {
+        if (msg.author.id !== Main.Config.bot.master_user_id) {
+            return;
+        }
+
         let key = (arg[1]) ? arg[1] : '';
         if (!arg[0] || !Main.Hooks.hasOwnProperty(arg[0])) {
             messageReply(msg, "Specified hook not found!");
@@ -235,22 +239,26 @@ const COMMANDS = {
         time = Math.min(Math.max(time, 5000), 3600000);
 
         // Verify that this user is allowed to disconnect the bot
-        if (msg.author.id == Main.Config.bot.master_user_id) {
-
-            messageReply(msg, `Taking bot offline for ${time} ms.  Any commands will be ignored until after that time, but the server will still attempt to listen for HTTP requests.`);
-
-            Client.destroy()
-                .then(() => {
-                    setTimeout(() => {
-                        Logger.log(1, 'Finished user-specified timeout');
-                    }, time);
-                })
-                .catch(Logger.noteError(`[DISCONNECT] Destroying the client session`));
-        } else {
-            messageReply(msg, `[DISCONNECT] Sending a reply [Not Permitted] to ${msg.author} in ${msg.channel}`);
+        if (msg.author.id !== Main.Config.bot.master_user_id) {
+            return;
         }
+
+        messageReply(msg, `Taking bot offline for ${time} ms.  Any commands will be ignored until after that time, but the server will still attempt to listen for HTTP requests.`);
+
+        Client.destroy()
+            .then(() => {
+                setTimeout(() => {
+                    Logger.log(1, 'Finished user-specified timeout');
+                }, time);
+            })
+            .catch(Logger.noteError(`[DISCONNECT] Destroying the client session`));
     },
     test: function (msg, arg) {
+        // Verify that this user is allowed to disconnect the bot
+        if (msg.author.id !== Main.Config.bot.master_user_id) {
+            return;
+        }
+
         if (!arg[0] || !Main.Hooks.hasOwnProperty(arg[0])) {
             messageReply(msg, "Couldn't find the provided webhook.");
             return;
