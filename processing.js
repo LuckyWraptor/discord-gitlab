@@ -48,25 +48,25 @@ class Processor {
             }
 
             // Allow all if none specified (Default behaviour).
-            if (tToken.gitlabs != null || tToken.gitlabs.length <= 0) {
+            if (tToken.gitlabs != null && tToken.gitlabs.length > 0) {
                 if (!Util.IsHostnameAllowed(tDomain[2], tToken.gitlabs)) {
                     Logger.log(2, "Gitlab url specified isn't allowed to post using this token.");
                     return;
                 }
             }
-            if (tToken.paths != null && tToken.paths.length <= 0) {
+            if (tToken.paths != null && tToken.paths.length > 0) {
                 if (!Util.IsPathAllowed(data.project.path_with_namespace, tToken.paths)) {
                     Logger.log(2, "Project path specified isn't allowed to post using this token.");
                     return;
                 }
             }
-            if (tToken.events != null && tToken.events.length <= 0) {
+            if (tToken.events != null && tToken.events.length > 0) {
                 if (!Util.IsEventAllowed(data, tToken.events, bConfidentialFiltered)) {
                     Logger.log(2, "Project event-specific type specified for the event isn't allowed to post using this token.");
                     return;
                 }
             }
-            if (tToken.webhooks == null && tToken.webhooks.length <= 0) {
+            if (tToken.webhooks == null || tToken.webhooks.length <= 0) {
                 Logger.log(3, "No webhooks specified for token: " + sToken);
                 return;
             }
@@ -121,8 +121,8 @@ class Processor {
                     } else if (data.commits.length == 1) {
                         tOutput.DESCRIPTION = DEDENT `
                             ${Markdown.GetMarkdownUrlFiltered(data.commits[0].url, Util.Truncate(data.commits[0].id, Util.StringLimits.COMMIT_ID, true), bHyperlinkFiltered)} ${data.commits[0].message}\n
-                            ${data.commits[0].modified.length} change(s)\n
-                            ${data.commits[0].added.length} addition(s)\n
+                            ${data.commits[0].modified.length} change(s)
+                            ${data.commits[0].added.length} addition(s)
                             ${data.commits[0].removed.length} deletion(s)
                             `;
                     } else {

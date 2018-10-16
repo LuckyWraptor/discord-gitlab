@@ -40,12 +40,13 @@ class Utility {
     }
     static IsEventAllowed(tData, tEvents, bConfidential) {
         switch (tData.event_name || tData.object_kind) {
+            case this.HookType.REPOSITORY_UPDATE:
             case this.HookType.COMMIT:
-                return (tEvents.commit != null && tEvents.commit == true);
+                return (tEvents.commit != null && tEvents.commit === true);
             case this.HookType.TAG_COMMIT:
-                return (tEvents.tag != null && tEvents.tag == true);
+                return (tEvents.tag != null && tEvents.tag === true);
             case this.HookType.WIKI:
-                return (tEvents.wiki != null && tEvents.wiki == true);
+                return (tEvents.wiki != null && tEvents.wiki === true);
             case this.HookType.ISSUE_CONFIDENTIAL:
                 if (!bConfidential)
                     return false;
@@ -90,6 +91,9 @@ class Utility {
                     }
                 }
                 break;
+                
+            default:
+                return false;
         }
         return false;
     }
@@ -121,7 +125,8 @@ Utility.HookType = {
     MERGE: "merge_request",
     WIKI: "wiki_page",
     PIPELINE: "pipeline",
-    BUILD: "build"
+    BUILD: "build",
+    REPOSITORY_UPDATE: "repository_update"
 };
 Utility.NoteType = {
     COMMIT: "Commit",
