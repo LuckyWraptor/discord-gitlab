@@ -8,6 +8,10 @@ const dateFormat = {hour12:false,hour:'numeric', minute:'numeric',second:'numeri
 
 class Logger {
     static log(iType, sText) {
+        if(iType == 0 && !MAIN.Config.application.debug)
+        {
+            return;
+        }
         console.log(`${new Date().toLocaleString('UTC', dateFormat)} | [${logTypes[iType]}] ${sText}`);
     }
 
