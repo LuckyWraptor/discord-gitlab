@@ -1,8 +1,14 @@
-const VERSION = "1.0.0";
+const VERSION = "1.0.1";
 console.log(`======================================\r\n   'Gitlab -> Discord' bot\r\n   Version ${VERSION}\r\n   Fork:\r\n     From: FlyingKatsu-Discord-Bots\r\n     By:   FlyingWraptor\r\n======================================`);
 
 // Load configuration
-const CONFIG = require('./require/config.json');
+var args = process.argv.slice(2);
+var fileName = 'config.json';
+if(args.length >= 1)
+{
+    fileName = args[0];
+}
+const CONFIG = require(`./require/${fileName}`);
 module.exports = { Config: CONFIG };
 
 const CRYPTO = require('crypto');
@@ -16,6 +22,13 @@ const Processor = require('./processing');
 
 // Instanceable <kek>
 const WebHook = require('./webhook');
+
+
+// Ignore certificate validation (if enabled)
+if(CONFIG.application.ignoreSslCerts === true)
+{
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
 
 
 function CustomError(message) {

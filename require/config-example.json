@@ -1,7 +1,8 @@
 {
   "application": {
     "updates": true, 
-    "debug": false
+    "debug": false,
+    "ignoreSslCerts": false
   },
   "bot": {
     "nickname": "James",
