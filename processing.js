@@ -113,6 +113,7 @@ class Processor {
 
         try {
             switch (data.event_name || data.object_kind) {
+                case Util.HookType.REPOSITORY_UPDATE:
                 case Util.HookType.COMMIT:
                     tOutput.COLOR = Util.ColorCodes.BLUE;
 
