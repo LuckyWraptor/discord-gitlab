@@ -111,8 +111,10 @@ class Processor {
         }
         tOutput.AVATAR_URL = Util.GetAvatarURL(tOutput.AVATAR_URL, (tDomain[1] +tDomain[2]));
 
+        let type = data.event_name || data.object_kind || 'Unknown';
+
         try {
-            switch (data.event_name || data.object_kind) {
+            switch (type) {
                 case Util.HookType.REPOSITORY_UPDATE:
                 case Util.HookType.COMMIT:
                     tOutput.COLOR = Util.ColorCodes.BLUE;
@@ -575,11 +577,11 @@ class Processor {
                     break;
             }
         } catch (e) {
-            Logger.log(3, 'Context: processing data of an HTTP request. Type: ' + (data.event_name || data.object_kind));
+            Logger.log(3, 'Context: processing data of an HTTP request. Type: ' + (type));
             console.error(e);
 
             tOutput.COLOR = Util.ColorCodes.YELLOW;
-            tOutput.TITLE = 'Reading HTTP Request Data: ' + (data.event_name || data.object_kind);
+            tOutput.TITLE = 'Reading HTTP Request Data: ' + (type);
             tOutput.DESCRIPTION = e.message;
         }
 
