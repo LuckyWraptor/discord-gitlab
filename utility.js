@@ -95,19 +95,26 @@ class Utility {
                     }
                 }
             case this.HookType.PIPELINE:
-            case this.HookType.BUILD:
-                if (tEvents.build != null) {
-                    if (tData.object_attributes != null && tData.object_attributes.detailed_satus != null) {
-                        for (let i = 0; i < tEvents.build.length; i++) {
-                            if (tEvents.build[i] == '*' || tEvents.build[i].toLowerCase() == tData.object_attributes.detailed_satus.toLowerCase())
+                if(tEvents.pipeline != null)
+                {
+                    if (tData.object_attributes != null && tData.object_attributes.detailed_status != null) {
+                        for (let i = 0; i < tEvents.pipeline.length; i++) {
+                            if (tEvents.pipeline[i] == '*' || tEvents.pipeline[i].toLowerCase() == tData.object_attributes.detailed_satus.toLowerCase())
                                 return true;
                         }
                     }
                 }
                 break;
-                
-            default:
-                return false;
+            case this.HookType.BUILD:
+                if (tEvents.build != null) {
+                    if (tData.object_attributes != null && tData.object_attributes.detailed_status != null) {
+                        for (let i = 0; i < tEvents.build.length; i++) {
+                            if (tEvents.build[i] == '*' || tEvents.build[i].toLowerCase() == tData.object_attributes.detailed_status.toLowerCase())
+                                return true;
+                        }
+                    }
+                }
+                break;
         }
         return false;
     }
