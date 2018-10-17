@@ -20,7 +20,7 @@ class Markdown
     }
     static GetMarkdownUrlFiltered(sUrl, sText, bFiltered, sHoverText)
     {
-        return `[${sText}](${(bFiltered ? '#' : sUrl)} ${(sHoverText != null && sHoverText.length > 0) ? "'" + sHoverText + "'" : ""})`;
+        return `[${sText}](${(bFiltered === true ? '#' : sUrl)} ${(sHoverText != null && sHoverText.length > 0) ? "'" + sHoverText + "'" : ""})`;
     }
     static GetUserString(sUrl, sUser)
     {

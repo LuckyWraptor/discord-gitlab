@@ -38,8 +38,8 @@ class Processor {
         let bHyperlinkFiltered = false;
         let bConfidentialFiltered = false;
         if (Main.Config.filters) {
-            bHyperlinkFiltered = Main.Config.filters.hyperlinks || false;
-            bConfidentialFiltered = Main.Config.filters.confidential || false;
+            bHyperlinkFiltered = Main.Config.filters.hyperlinks === true;
+            bConfidentialFiltered = Main.Config.filters.confidential === true;
         }
         if (tToken != null) {
             if (tToken.filters != null && tToken.filters.hyperlinks != null) {
