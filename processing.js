@@ -52,15 +52,17 @@ class Processor {
                 Logger.log(3, "No webhooks specified for token: " + sToken);
                 return;
             }
-            
+
             if (!Util.IsHostnameAllowed(tDomain[2], tToken.gitlabs)) {
                 Logger.log(2, "Gitlab url specified isn't allowed to post using this token.");
                 return;
             }
+
             if (!Util.IsPathAllowed(data.project.path_with_namespace, tToken.paths)) {
                 Logger.log(2, "Project path specified isn't allowed to post using this token.");
                 return;
             }
+            
             if (!Util.IsEventAllowed(data, tToken.events, bConfidentialFiltered)) {
                 Logger.log(2, "Project event-specific type specified for the event isn't allowed to post using this token.");
                 return;
@@ -147,7 +149,7 @@ class Processor {
                         Logger.noteError(JSON.stringify(data));
                     } else if (data.commits.length == 1) {
                         tOutput.DESCRIPTION += DEDENT `
-                            ${Markdown.GetMarkdownUrlFiltered(data.commits[0].url, bHyperlinkFiltered)} ${data.commits[0].message}\n
+                            ${Markdown.GetMarkdownUrlFiltered(data.commits[0].url, Util.Truncate(data.commits[0].id, Util.StringLimits.COMMIT_ID, true), bHyperlinkFiltered)} ${data.commits[0].message}\n
                             ${data.commits[0].modified.length} change(s)\n
                             ${data.commits[0].added.length} addition(s)\n
                             ${data.commits[0].removed.length} deletion(s)

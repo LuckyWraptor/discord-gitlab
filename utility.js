@@ -27,9 +27,10 @@ class Utility {
         return false;
     }
     static IsPathAllowed(sPath, tPaths) {
-        if(sPaths == null || tPaths == null) {
+        if(sPath == null || tPaths == null) {
             return false;
         }
+
 
         let tSpecifiedPath = sPath.split('/');
 
@@ -38,7 +39,8 @@ class Utility {
             if (tPath[0] == '*') {
                 return true;
             }
-            else if (tPath[0] == tSpecifiedPath[0]) {
+            
+            if (tPath[0] == tSpecifiedPath[0]) {
                 if (tPath[1] == '*' || tPath[1] == tSpecifiedPath[1]) {
                     return true;
                 }
