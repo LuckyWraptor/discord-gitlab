@@ -115,7 +115,9 @@ class Processor {
 
         try {
             switch (type) {
-                case Util.HookType.REPOSITORY_UPDATE:
+                // case Util.HookType.REPOSITORY_UPDATE:
+                //     // Don't do anything yet
+                //     break;
                 case Util.HookType.COMMIT:
                     tOutput.COLOR = Util.ColorCodes.BLUE;
 
