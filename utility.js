@@ -12,6 +12,10 @@ class Utility {
 
 
     static IsHostnameAllowed(sUrl, tUrls) {
+        if(sUrl == null || tUrls == null) {
+            return false;
+        }
+
         if (tUrls.length == 1) {
             return (tUrls[0] == '*' || tUrls[0].toLowerCase() == sUrl.toLowerCase())
         }
@@ -23,6 +27,10 @@ class Utility {
         return false;
     }
     static IsPathAllowed(sPath, tPaths) {
+        if(sPaths == null || tPaths == null) {
+            return false;
+        }
+
         let tSpecifiedPath = sPath.split('/');
 
         for (let i = 0; i < tPaths.length; i++) {
@@ -39,6 +47,10 @@ class Utility {
         return false;
     }
     static IsEventAllowed(tData, tEvents, bConfidential) {
+        if(tData == null || tEvents == null) {
+            return false;
+        }
+
         switch (tData.event_name || tData.object_kind) {
             case this.HookType.REPOSITORY_UPDATE:
             case this.HookType.COMMIT:
