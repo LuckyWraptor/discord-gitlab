@@ -34,20 +34,30 @@ class Utility {
 
         let tSpecifiedPath = sPath.split('/');
 
+
         for (let i = 0; i < tPaths.length; i++) {
             let tPath = tPaths[i].split('/');
-            if (tPath[0] == '*') {
-                return true;
-            }
             
-            if (tPath[0] == tSpecifiedPath[0]) {
-                if (tPath[1] == '*' || tPath[1] == tSpecifiedPath[1]) {
+            for(let iPath = 0; iPath < tPath.length; iPath++)
+            {
+                // Allow all next values
+                if(tPath[iPath] == '*')
+                {
+                    return true;
+                }
+
+                // Path does not equal, deny
+                if (tPath[iPath].toLowerCase() != tSpecifiedPath[iPath].toLowerCase()) {
+                    break;
+                }
+                else if( (tPath.length -iPath) == -1) {
                     return true;
                 }
             }
         }
         return false;
     }
+
     static IsEventAllowed(tData, tEvents, bConfidential) {
         if(tData == null || tEvents == null) {
             return false;
