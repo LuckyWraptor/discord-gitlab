@@ -1,4 +1,4 @@
-const VERSION = "1.0.1";
+const VERSION = "1.0.2";
 console.log(`======================================\r\n   'Gitlab -> Discord' bot\r\n   Version ${VERSION}\r\n   Fork:\r\n     From: FlyingKatsu-Discord-Bots\r\n     By:   FlyingWraptor\r\n======================================`);
 
 // Load configuration
