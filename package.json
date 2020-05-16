@@ -18,7 +18,7 @@
   "homepage": "https://github.com/FlyingWraptor/discord-gitlab#readme",
   "dependencies": {
     "dedent-js": "^1.0.1",
-    "discord.js": "^11.2.1",
+    "discord.js": "^12.2.0",
     "erlpack": "github:hammerandchisel/erlpack#master",
     "pm2": "^2.4.5",
     "randomstring": "^1.1.5",

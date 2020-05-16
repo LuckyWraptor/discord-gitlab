@@ -24,8 +24,8 @@ Logger.log(0, "Initializing Bot client...");
 const Client = new DISCORD.Client();
 setInterval(
     () => {
-        //Logger.log(0, '### Routine check client.status: ' + Client.status + '; uptime: ' + Client.uptime + "."); // Debugging, only if necessary
-        if (Client != null && Client.status == 5) {
+        //Logger.log(0, '### Routine check Client.ws.status: ' + Client.ws.status + '; uptime: ' + Client.uptime + "."); // Debugging, only if necessary
+        if (Client != null && Client.ws.status == 5) {
             Client.login(Main.Config.bot.credentials.token || process.env.DG_BOT_TOKEN);
         }
     },

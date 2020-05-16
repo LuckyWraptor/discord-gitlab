@@ -28,7 +28,7 @@ class Webhook {
             this.Queue.push(tEmbed);
             return;
         }
-        if(Client.status == 0 && !Main.IntentionalDisconnect) {
+        if(Client.ws.status == 0 && !Main.IntentionalDisconnect) {
             this._webHook.send('', { embeds: [tEmbed] })
                 .catch(Logger.noteError(`[sendData] Sending an embed via WebHook: ${Main.Config.webhooks[this.ID].name}`));
             Logger.log(0, `Webhook '${Main.Config.webhooks[this.ID].name}' has send an embed.`);
@@ -42,7 +42,7 @@ class Webhook {
     }
     SendQueue(bDestroy)
     {
-        if(Client.status == 0) {
+        if(Client.ws.status == 0) {
             this._webHook.send('', { embeds: this.Queue })
                 .then(() => {
                     this.Queue = [];
